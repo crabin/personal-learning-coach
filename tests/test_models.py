@@ -31,6 +31,14 @@ def test_domain_enrollment_defaults() -> None:
     enroll = DomainEnrollment(user_id="u1", domain="ai_agent")
     assert enroll.status == DomainStatus.NOT_STARTED
     assert enroll.level == LearnerLevel.BEGINNER
+    assert enroll.current_level == LearnerLevel.BEGINNER
+    assert enroll.target_level == LearnerLevel.BEGINNER
+    assert enroll.daily_minutes == 60
+    assert enroll.learning_style == "blended"
+    assert enroll.delivery_time == "09:00"
+    assert enroll.language == "zh"
+    assert enroll.allow_online_resources is True
+    assert enroll.schedule_config["delivery_time"] == "09:00"
 
 
 def test_learning_plan_round_trip() -> None:
@@ -66,6 +74,8 @@ def test_push_record_round_trip() -> None:
     restored = PushRecord.model_validate(data)
     assert restored.theory == pr.theory
     assert restored.push_id == pr.push_id
+    assert restored.push_type == "new_topic"
+    assert restored.delivery_channel == "local"
 
 
 def test_submission_record() -> None:
@@ -75,10 +85,14 @@ def test_submission_record() -> None:
         topic_id="t1",
         domain="ai_agent",
         raw_answer="Attention is a mechanism...",
+        practice_result="Implemented a toy attention example.",
+        parsing_notes="Parsed as free-text response.",
     )
     data = sub.model_dump(mode="json")
     restored = SubmissionRecord.model_validate(data)
     assert restored.raw_answer == sub.raw_answer
+    assert restored.normalized_answer == sub.raw_answer
+    assert restored.practice_result == "Implemented a toy attention example."
 
 
 def test_evaluation_record_weighted_score() -> None:
@@ -109,8 +123,16 @@ def test_assessment_record() -> None:
         level=LearnerLevel.INTERMEDIATE,
         questions=["What is a transformer?"],
         raw_answers=["A transformer is a neural network architecture."],
+        confidence=0.82,
+        strengths=["Understands model architecture basics"],
+        weaknesses=["Needs stronger systems intuition"],
+        structured_scores={"concept_coverage": 82.0, "practical_application": 68.0},
+        recommended_plan_style="practice",
     )
     data = rec.model_dump(mode="json")
     restored = AssessmentRecord.model_validate(data)
     assert restored.level == LearnerLevel.INTERMEDIATE
     assert len(restored.raw_answers) == 1
+    assert restored.confidence == 0.82
+    assert restored.strengths == ["Understands model architecture basics"]
+    assert restored.recommended_plan_style == "practice"

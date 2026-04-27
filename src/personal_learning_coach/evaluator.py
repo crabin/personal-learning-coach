@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from typing import Any
 
-import anthropic
-
 from personal_learning_coach import data_store
+from personal_learning_coach.llm_client import generate_text
 from personal_learning_coach.models import (
     DimensionScore,
     EvaluationRecord,
@@ -18,8 +16,6 @@ from personal_learning_coach.models import (
 )
 
 logger = logging.getLogger(__name__)
-
-MODEL = "claude-sonnet-4-6"
 
 EVAL_SYSTEM = """\
 You are an expert learning coach evaluating a student's submission.
@@ -69,10 +65,6 @@ DIMENSION_WEIGHTS = {
 }
 
 
-def _client() -> anthropic.Anthropic:
-    return anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-
-
 def _parse_json(text: str) -> Any:
     text = text.strip()
     if text.startswith("```"):
@@ -93,20 +85,18 @@ def _compute_overall(dims: dict[str, dict[str, Any]]) -> float:
 def evaluate_submission(
     submission: SubmissionRecord,
     push: PushRecord,
-    client: anthropic.Anthropic | None = None,
+    client: Any | None = None,
 ) -> EvaluationRecord:
     """Evaluate a submission against its push context.
 
     Args:
         submission: The learner's submission.
         push: The push that prompted the submission.
-        client: Optional Anthropic client (for testing).
+        client: Optional LLM client or test double.
 
     Returns:
         Persisted EvaluationRecord.
     """
-    cl = client or _client()
-
     # Resolve topic title from the plan
     plans = data_store.learning_plans.filter(user_id=submission.user_id, domain=submission.domain)
     topic_title = submission.topic_id
@@ -124,13 +114,12 @@ def evaluate_submission(
         practice_question=push.practice_question,
         raw_answer=submission.raw_answer,
     )
-    response = cl.messages.create(
-        model=MODEL,
-        max_tokens=2048,
+    raw = generate_text(
         system=EVAL_SYSTEM,
-        messages=[{"role": "user", "content": prompt}],
+        prompt=prompt,
+        max_tokens=2048,
+        client=client,
     )
-    raw = response.content[0].text  # type: ignore[union-attr]
     data = _parse_json(raw)
 
     dims_raw: dict[str, dict[str, Any]] = data["dimensions"]

@@ -17,6 +17,9 @@ class SubmitRequest(BaseModel):
     user_id: str
     push_id: str
     raw_answer: str
+    practice_result: str = ""
+    normalized_answer: str = ""
+    parsing_notes: str = ""
 
 
 class SubmitResponse(BaseModel):
@@ -39,6 +42,9 @@ def submit_answer(body: SubmitRequest) -> SubmitResponse:
         topic_id=push.topic_id,
         domain=push.domain,
         raw_answer=body.raw_answer,
+        practice_result=body.practice_result,
+        normalized_answer=body.normalized_answer,
+        parsing_notes=body.parsing_notes,
     )
     data_store.submission_records.save(submission)
 

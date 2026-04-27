@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 def _now() -> datetime:
@@ -78,8 +78,28 @@ class DomainEnrollment(BaseModel):
     domain: str
     status: DomainStatus = DomainStatus.NOT_STARTED
     level: LearnerLevel = LearnerLevel.BEGINNER
+    target_level: LearnerLevel | None = None
+    current_level: LearnerLevel | None = None
+    daily_minutes: int = 60
+    learning_style: str = "blended"
+    delivery_time: str = "09:00"
+    language: str = "zh"
+    allow_online_resources: bool = True
+    schedule_config: dict[str, Any] = Field(default_factory=dict)
     enrolled_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
+
+    @model_validator(mode="after")
+    def _apply_defaults(self) -> DomainEnrollment:
+        if self.current_level is None:
+            self.current_level = self.level
+        if self.target_level is None:
+            self.target_level = self.level
+        if not self.schedule_config:
+            self.schedule_config = {"delivery_time": self.delivery_time}
+        else:
+            self.schedule_config.setdefault("delivery_time", self.delivery_time)
+        return self
 
 
 class TopicNode(BaseModel):
@@ -126,11 +146,15 @@ class PushRecord(BaseModel):
     user_id: str
     topic_id: str
     domain: str
+    push_type: str = "new_topic"
     theory: str = ""
     practice_question: str = ""
     reflection_question: str = ""
     scheduled_at: datetime = Field(default_factory=_now)
     delivered_at: datetime | None = None
+    resource_snapshot: dict[str, Any] = Field(default_factory=dict)
+    delivery_channel: str = "local"
+    delivery_result: str = "pending"
     content_snapshot: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -143,7 +167,16 @@ class SubmissionRecord(BaseModel):
     topic_id: str
     domain: str
     raw_answer: str
+    practice_result: str = ""
+    normalized_answer: str = ""
+    parsing_notes: str = ""
     submitted_at: datetime = Field(default_factory=_now)
+
+    @model_validator(mode="after")
+    def _normalize_answer(self) -> SubmissionRecord:
+        if not self.normalized_answer:
+            self.normalized_answer = self.raw_answer.strip()
+        return self
 
 
 class DimensionScore(BaseModel):
@@ -184,5 +217,10 @@ class AssessmentRecord(BaseModel):
     level: LearnerLevel = LearnerLevel.BEGINNER
     raw_answers: list[str] = Field(default_factory=list)
     questions: list[str] = Field(default_factory=list)
+    confidence: float = 0.0
+    strengths: list[str] = Field(default_factory=list)
+    weaknesses: list[str] = Field(default_factory=list)
+    structured_scores: dict[str, float] = Field(default_factory=dict)
+    recommended_plan_style: str = "blended"
     llm_feedback: str = ""
     evaluated_at: datetime = Field(default_factory=_now)

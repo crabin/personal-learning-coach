@@ -1,14 +1,14 @@
-"""Domain enrollment and status routes."""
+"""Domain enrollment, lifecycle, and status routes."""
 
 from __future__ import annotations
 
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from personal_learning_coach import data_store
-from personal_learning_coach.models import LearnerLevel
+from personal_learning_coach.models import DomainStatus, LearnerLevel
 
 router = APIRouter(prefix="/domains", tags=["domains"])
 
@@ -16,7 +16,13 @@ router = APIRouter(prefix="/domains", tags=["domains"])
 class EnrollRequest(BaseModel):
     user_id: str
     level: LearnerLevel = LearnerLevel.BEGINNER
-    preferences: dict[str, Any] = {}
+    target_level: LearnerLevel | None = None
+    daily_minutes: int = 60
+    learning_style: str = "blended"
+    delivery_time: str = "09:00"
+    language: str = "zh"
+    allow_online_resources: bool = True
+    preferences: dict[str, Any] = Field(default_factory=dict)
 
 
 class EnrollResponse(BaseModel):
@@ -26,17 +32,33 @@ class EnrollResponse(BaseModel):
     level: str
     status: str
     topic_count: int
+    current_level: str
+    target_level: str
+    daily_minutes: int
+    learning_style: str
+    delivery_time: str
+    language: str
+    allow_online_resources: bool
 
 
 @router.post("/{domain}/enroll", response_model=EnrollResponse)
 def enroll_domain_route(domain: str, body: EnrollRequest) -> EnrollResponse:
     from personal_learning_coach.plan_generator import enroll_domain
 
+    preferences = {
+        **body.preferences,
+        "target_level": (body.target_level or body.level).value,
+        "daily_minutes": body.daily_minutes,
+        "learning_style": body.learning_style,
+        "delivery_time": body.delivery_time,
+        "language": body.language,
+        "allow_online_resources": body.allow_online_resources,
+    }
     enrollment, plan = enroll_domain(
         user_id=body.user_id,
         domain=domain,
         level=body.level,
-        preferences=body.preferences,
+        preferences=preferences,
     )
     return EnrollResponse(
         enrollment_id=enrollment.enrollment_id,
@@ -45,6 +67,13 @@ def enroll_domain_route(domain: str, body: EnrollRequest) -> EnrollResponse:
         level=enrollment.level.value,
         status=enrollment.status.value,
         topic_count=len(plan.topics),
+        current_level=enrollment.current_level.value,
+        target_level=enrollment.target_level.value,
+        daily_minutes=enrollment.daily_minutes,
+        learning_style=enrollment.learning_style,
+        delivery_time=enrollment.delivery_time,
+        language=enrollment.language,
+        allow_online_resources=enrollment.allow_online_resources,
     )
 
 
@@ -59,15 +88,58 @@ class DomainStatusResponse(BaseModel):
     avg_score: float
 
 
+class DomainLifecycleRequest(BaseModel):
+    user_id: str
+
+
+class DeleteDomainRequest(BaseModel):
+    user_id: str
+    confirm: bool = False
+
+
+class DomainLifecycleResponse(BaseModel):
+    domain: str
+    user_id: str
+    status: str
+    message: str
+
+
+class DeleteDomainResponse(BaseModel):
+    domain: str
+    user_id: str
+    deleted: bool
+    message: str
+
+
+def _get_enrollment_or_404(user_id: str, domain: str):
+    enrollments = data_store.domain_enrollments.filter(user_id=user_id, domain=domain)
+    if not enrollments:
+        raise HTTPException(status_code=404, detail="Domain enrollment not found")
+    return enrollments[0]
+
+
+def _delete_records_for_domain(user_id: str, domain: str) -> None:
+    stores = (
+        data_store.domain_enrollments,
+        data_store.learning_plans,
+        data_store.topic_progress,
+        data_store.push_records,
+        data_store.submission_records,
+        data_store.evaluation_records,
+        data_store.assessment_records,
+    )
+    for store in stores:
+        records = store.filter(user_id=user_id, domain=domain)
+        for record in records:
+            record_id = getattr(record, next(f for f in type(record).model_fields if f.endswith("_id")))
+            store.delete(record_id)
+
+
 @router.get("/{domain}/status", response_model=DomainStatusResponse)
 def get_domain_status(domain: str, user_id: str) -> DomainStatusResponse:
     from personal_learning_coach.review_engine import generate_weekly_summary
 
-    enrollments = data_store.domain_enrollments.filter(user_id=user_id, domain=domain)
-    if not enrollments:
-        raise HTTPException(status_code=404, detail="Domain enrollment not found")
-
-    enrollment = enrollments[0]
+    enrollment = _get_enrollment_or_404(user_id, domain)
     summary = generate_weekly_summary(user_id, domain)
 
     return DomainStatusResponse(
@@ -79,4 +151,57 @@ def get_domain_status(domain: str, user_id: str) -> DomainStatusResponse:
         mastered_topics=int(summary["mastered_topics"]),  # type: ignore[arg-type]
         review_due_topics=int(summary["review_due_topics"]),  # type: ignore[arg-type]
         avg_score=float(summary["avg_score"]),  # type: ignore[arg-type]
+    )
+
+
+@router.post("/{domain}/pause", response_model=DomainLifecycleResponse)
+def pause_domain(domain: str, body: DomainLifecycleRequest) -> DomainLifecycleResponse:
+    enrollment = _get_enrollment_or_404(body.user_id, domain)
+    enrollment.status = DomainStatus.PAUSED
+    data_store.domain_enrollments.save(enrollment)
+    return DomainLifecycleResponse(
+        domain=domain,
+        user_id=body.user_id,
+        status=enrollment.status.value,
+        message="Domain paused.",
+    )
+
+
+@router.post("/{domain}/resume", response_model=DomainLifecycleResponse)
+def resume_domain(domain: str, body: DomainLifecycleRequest) -> DomainLifecycleResponse:
+    enrollment = _get_enrollment_or_404(body.user_id, domain)
+    enrollment.status = DomainStatus.ACTIVE
+    data_store.domain_enrollments.save(enrollment)
+    return DomainLifecycleResponse(
+        domain=domain,
+        user_id=body.user_id,
+        status=enrollment.status.value,
+        message="Domain resumed.",
+    )
+
+
+@router.post("/{domain}/archive", response_model=DomainLifecycleResponse)
+def archive_domain(domain: str, body: DomainLifecycleRequest) -> DomainLifecycleResponse:
+    enrollment = _get_enrollment_or_404(body.user_id, domain)
+    enrollment.status = DomainStatus.ARCHIVED
+    data_store.domain_enrollments.save(enrollment)
+    return DomainLifecycleResponse(
+        domain=domain,
+        user_id=body.user_id,
+        status=enrollment.status.value,
+        message="Domain archived.",
+    )
+
+
+@router.delete("/{domain}", response_model=DeleteDomainResponse)
+def delete_domain(domain: str, body: DeleteDomainRequest) -> DeleteDomainResponse:
+    _get_enrollment_or_404(body.user_id, domain)
+    if not body.confirm:
+        raise HTTPException(status_code=400, detail="Deletion requires confirm=true")
+    _delete_records_for_domain(body.user_id, domain)
+    return DeleteDomainResponse(
+        domain=domain,
+        user_id=body.user_id,
+        deleted=True,
+        message="Domain data deleted.",
     )

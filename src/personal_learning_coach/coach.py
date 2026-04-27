@@ -18,6 +18,19 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _plan_preferences(args: argparse.Namespace, level: object) -> dict[str, object]:
+    target_level = getattr(args, "target_level", None) or level
+    target_level_value = target_level.value if hasattr(target_level, "value") else str(target_level)
+    return {
+        "target_level": target_level_value,
+        "daily_minutes": args.daily_minutes,
+        "learning_style": args.learning_style,
+        "delivery_time": args.delivery_time,
+        "language": args.language,
+        "allow_online_resources": args.allow_online_resources,
+    }
+
+
 def _cmd_assess(args: argparse.Namespace) -> None:
     from personal_learning_coach.level_tester import run_assessment
 
@@ -60,7 +73,13 @@ def _cmd_plan(args: argparse.Namespace) -> None:
     else:
         level = LearnerLevel.BEGINNER
 
-    enrollment, plan = enroll_domain(user_id=args.user_id, domain=args.domain, level=level)
+    preferences = _plan_preferences(args, level)
+    enrollment, plan = enroll_domain(
+        user_id=args.user_id,
+        domain=args.domain,
+        level=level,
+        preferences=preferences,
+    )
     print(f"Plan generated: {len(plan.topics)} topics over {plan.total_weeks} weeks")
     for i, topic in enumerate(plan.topics, 1):
         print(f"  {i}. {topic.title}")
@@ -117,6 +136,63 @@ def _cmd_report(args: argparse.Namespace) -> None:
     print(f"Report saved: {path}")
 
 
+def _cmd_pause(args: argparse.Namespace) -> None:
+    from personal_learning_coach import data_store
+    from personal_learning_coach.models import DomainStatus
+
+    enrollments = data_store.domain_enrollments.filter(user_id=args.user_id, domain=args.domain)
+    if not enrollments:
+        print(f"Domain enrollment not found: {args.domain}", file=sys.stderr)
+        sys.exit(1)
+    enrollment = enrollments[0]
+    enrollment.status = DomainStatus.PAUSED
+    data_store.domain_enrollments.save(enrollment)
+    print(f"Domain paused: {args.domain}")
+
+
+def _cmd_resume(args: argparse.Namespace) -> None:
+    from personal_learning_coach import data_store
+    from personal_learning_coach.models import DomainStatus
+
+    enrollments = data_store.domain_enrollments.filter(user_id=args.user_id, domain=args.domain)
+    if not enrollments:
+        print(f"Domain enrollment not found: {args.domain}", file=sys.stderr)
+        sys.exit(1)
+    enrollment = enrollments[0]
+    enrollment.status = DomainStatus.ACTIVE
+    data_store.domain_enrollments.save(enrollment)
+    print(f"Domain resumed: {args.domain}")
+
+
+def _cmd_archive(args: argparse.Namespace) -> None:
+    from personal_learning_coach import data_store
+    from personal_learning_coach.models import DomainStatus
+
+    enrollments = data_store.domain_enrollments.filter(user_id=args.user_id, domain=args.domain)
+    if not enrollments:
+        print(f"Domain enrollment not found: {args.domain}", file=sys.stderr)
+        sys.exit(1)
+    enrollment = enrollments[0]
+    enrollment.status = DomainStatus.ARCHIVED
+    data_store.domain_enrollments.save(enrollment)
+    print(f"Domain archived: {args.domain}")
+
+
+def _cmd_delete_domain(args: argparse.Namespace) -> None:
+    from personal_learning_coach.api.routes.domains import _delete_records_for_domain
+    from personal_learning_coach import data_store
+
+    enrollments = data_store.domain_enrollments.filter(user_id=args.user_id, domain=args.domain)
+    if not enrollments:
+        print(f"Domain enrollment not found: {args.domain}", file=sys.stderr)
+        sys.exit(1)
+    if not args.confirm_delete:
+        print("Domain deletion requires --confirm-delete", file=sys.stderr)
+        sys.exit(1)
+    _delete_records_for_domain(args.user_id, args.domain)
+    print(f"Domain deleted: {args.domain}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Personal Learning Coach CLI")
     parser.add_argument("--user-id", default="default_user", help="Learner user ID")
@@ -128,6 +204,14 @@ def main() -> None:
 
     p_plan = subparsers.add_parser("plan", help="Generate learning plan")
     p_plan.add_argument("--domain", required=True)
+    p_plan.add_argument("--target-level", choices=["beginner", "intermediate", "advanced"])
+    p_plan.add_argument("--daily-minutes", type=int, default=60)
+    p_plan.add_argument("--learning-style", default="blended")
+    p_plan.add_argument("--delivery-time", default="09:00")
+    p_plan.add_argument("--language", default="zh")
+    p_plan.add_argument("--allow-online-resources", dest="allow_online_resources", action="store_true")
+    p_plan.add_argument("--no-online-resources", dest="allow_online_resources", action="store_false")
+    p_plan.set_defaults(allow_online_resources=True)
 
     p_push = subparsers.add_parser("push", help="Deliver today's push")
     p_push.add_argument("--domain", required=True)
@@ -139,6 +223,19 @@ def main() -> None:
     p_report = subparsers.add_parser("report", help="Generate progress report")
     p_report.add_argument("--domain", required=True)
 
+    p_pause = subparsers.add_parser("pause", help="Pause a domain enrollment")
+    p_pause.add_argument("--domain", required=True)
+
+    p_resume = subparsers.add_parser("resume", help="Resume a domain enrollment")
+    p_resume.add_argument("--domain", required=True)
+
+    p_archive = subparsers.add_parser("archive", help="Archive a domain enrollment")
+    p_archive.add_argument("--domain", required=True)
+
+    p_delete = subparsers.add_parser("delete-domain", help="Delete a domain and related records")
+    p_delete.add_argument("--domain", required=True)
+    p_delete.add_argument("--confirm-delete", action="store_true")
+
     args = parser.parse_args()
 
     commands = {
@@ -147,6 +244,10 @@ def main() -> None:
         "push": _cmd_push,
         "submit": _cmd_submit,
         "report": _cmd_report,
+        "pause": _cmd_pause,
+        "resume": _cmd_resume,
+        "archive": _cmd_archive,
+        "delete-domain": _cmd_delete_domain,
     }
     commands[args.command](args)
 

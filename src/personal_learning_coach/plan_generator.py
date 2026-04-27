@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from typing import Any
 
-import anthropic
-
 from personal_learning_coach import data_store
+from personal_learning_coach.llm_client import generate_text
 from personal_learning_coach.models import (
     DomainEnrollment,
     DomainStatus,
@@ -23,12 +21,6 @@ from personal_learning_coach.prompts.generation import PLAN_GENERATION_PROMPT, P
 
 logger = logging.getLogger(__name__)
 
-MODEL = "claude-haiku-4-5-20251001"
-
-
-def _client() -> anthropic.Anthropic:
-    return anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-
 
 def _parse_json(text: str) -> Any:
     text = text.strip()
@@ -39,35 +31,56 @@ def _parse_json(text: str) -> Any:
     return json.loads(text.strip())
 
 
+def _apply_enrollment_preferences(
+    enrollment: DomainEnrollment,
+    level: LearnerLevel,
+    preferences: dict[str, Any] | None,
+) -> DomainEnrollment:
+    prefs = preferences or {}
+    enrollment.level = level
+    enrollment.current_level = level
+    enrollment.target_level = LearnerLevel(prefs.get("target_level", level))
+    enrollment.daily_minutes = int(prefs.get("daily_minutes", enrollment.daily_minutes))
+    enrollment.learning_style = str(prefs.get("learning_style", enrollment.learning_style))
+    enrollment.delivery_time = str(prefs.get("delivery_time", enrollment.delivery_time))
+    enrollment.language = str(prefs.get("language", enrollment.language))
+    enrollment.allow_online_resources = bool(
+        prefs.get("allow_online_resources", enrollment.allow_online_resources)
+    )
+    enrollment.schedule_config = {
+        **enrollment.schedule_config,
+        "delivery_time": enrollment.delivery_time,
+    }
+    return enrollment
+
+
 def generate_plan(
     user_id: str,
     domain: str,
     level: LearnerLevel,
     preferences: dict[str, Any] | None = None,
-    client: anthropic.Anthropic | None = None,
+    client: Any | None = None,
 ) -> LearningPlan:
-    """Call Claude to create a structured learning plan.
+    """Call the LLM to create a structured learning plan.
 
     Args:
         user_id: Learner's ID.
         domain: Learning domain.
         level: Assessed learner level.
         preferences: Optional learner preferences dict.
-        client: Optional pre-configured Anthropic client (for testing).
+        client: Optional pre-configured OpenAI client (for testing).
 
     Returns:
         Persisted LearningPlan with initialised TopicProgress entries.
     """
-    cl = client or _client()
     prefs_str = json.dumps(preferences or {})
     prompt = PLAN_GENERATION_PROMPT.format(domain=domain, level=level.value, preferences=prefs_str)
-    response = cl.messages.create(
-        model=MODEL,
-        max_tokens=4096,
+    raw = generate_text(
         system=PLAN_SYSTEM,
-        messages=[{"role": "user", "content": prompt}],
+        prompt=prompt,
+        max_tokens=4096,
+        client=client,
     )
-    raw = response.content[0].text  # type: ignore[union-attr]
     data = _parse_json(raw)
 
     topics = [
@@ -111,7 +124,7 @@ def enroll_domain(
     domain: str,
     level: LearnerLevel,
     preferences: dict[str, Any] | None = None,
-    client: anthropic.Anthropic | None = None,
+    client: Any | None = None,
 ) -> tuple[DomainEnrollment, LearningPlan]:
     """Enroll a user in a domain and generate their learning plan.
 
@@ -123,10 +136,10 @@ def enroll_domain(
     if existing:
         enrollment = existing[0]
         enrollment.status = DomainStatus.PLANNING
-        enrollment.level = level
     else:
         enrollment = DomainEnrollment(user_id=user_id, domain=domain, level=level)
         enrollment.status = DomainStatus.PLANNING
+    enrollment = _apply_enrollment_preferences(enrollment, level, preferences)
 
     data_store.domain_enrollments.save(enrollment)
 

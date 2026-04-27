@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from typing import Any
 
-import anthropic
-
 from personal_learning_coach import data_store
+from personal_learning_coach.llm_client import generate_text
 from personal_learning_coach.models import AssessmentRecord, LearnerLevel
 from personal_learning_coach.prompts.assessment import (
     ASSESSMENT_EVALUATE_PROMPT,
@@ -20,22 +18,14 @@ from personal_learning_coach.prompts.assessment import (
 
 logger = logging.getLogger(__name__)
 
-MODEL = "claude-haiku-4-5-20251001"
 
-
-def _client() -> anthropic.Anthropic:
-    return anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-
-
-def _chat(system: str, prompt: str, client: anthropic.Anthropic | None = None) -> str:
-    cl = client or _client()
-    response = cl.messages.create(
-        model=MODEL,
-        max_tokens=2048,
+def _chat(system: str, prompt: str, client: Any | None = None) -> str:
+    return generate_text(
         system=system,
-        messages=[{"role": "user", "content": prompt}],
+        prompt=prompt,
+        max_tokens=2048,
+        client=client,
     )
-    return response.content[0].text  # type: ignore[union-attr]
 
 
 def _parse_json(text: str) -> Any:
@@ -48,10 +38,22 @@ def _parse_json(text: str) -> Any:
     return json.loads(text.strip())
 
 
+def _evaluate_answers_payload(
+    domain: str,
+    questions: list[str],
+    answers: list[str],
+    client: Any | None = None,
+) -> dict[str, Any]:
+    qa_text = build_qa_pairs(questions, answers)
+    prompt = ASSESSMENT_EVALUATE_PROMPT.format(domain=domain, qa_pairs=qa_text)
+    raw = _chat(ASSESSMENT_SYSTEM, prompt, client)
+    return _parse_json(raw)
+
+
 def generate_assessment_questions(
-    domain: str, client: anthropic.Anthropic | None = None
+    domain: str, client: Any | None = None
 ) -> list[str]:
-    """Ask Claude to generate assessment questions for the domain."""
+    """Ask the LLM to generate assessment questions for the domain."""
     prompt = ASSESSMENT_QUESTIONS_PROMPT.format(domain=domain)
     raw = _chat(ASSESSMENT_SYSTEM, prompt, client)
     data = _parse_json(raw)
@@ -62,13 +64,10 @@ def evaluate_answers(
     domain: str,
     questions: list[str],
     answers: list[str],
-    client: anthropic.Anthropic | None = None,
+    client: Any | None = None,
 ) -> tuple[LearnerLevel, str]:
-    """Ask Claude to evaluate answers and determine the learner's level."""
-    qa_text = build_qa_pairs(questions, answers)
-    prompt = ASSESSMENT_EVALUATE_PROMPT.format(domain=domain, qa_pairs=qa_text)
-    raw = _chat(ASSESSMENT_SYSTEM, prompt, client)
-    data = _parse_json(raw)
+    """Ask the LLM to evaluate answers and determine the learner's level."""
+    data = _evaluate_answers_payload(domain, questions, answers, client)
     level = LearnerLevel(data["level"])
     feedback = data.get("feedback", "")
     return level, feedback
@@ -79,7 +78,7 @@ def run_assessment(
     domain: str,
     answers: list[str],
     questions: list[str] | None = None,
-    client: anthropic.Anthropic | None = None,
+    client: Any | None = None,
 ) -> AssessmentRecord:
     """Run a full baseline assessment and persist the result.
 
@@ -88,7 +87,7 @@ def run_assessment(
         domain: Learning domain (e.g. 'ai_agent').
         answers: Learner's answers to the assessment questions.
         questions: If provided, use these instead of generating new ones.
-        client: Optional pre-configured Anthropic client (for testing).
+        client: Optional pre-configured OpenAI client (for testing).
 
     Returns:
         Persisted AssessmentRecord.
@@ -96,7 +95,9 @@ def run_assessment(
     if questions is None:
         questions = generate_assessment_questions(domain, client)
 
-    level, feedback = evaluate_answers(domain, questions, answers, client)
+    payload = _evaluate_answers_payload(domain, questions, answers, client)
+    level = LearnerLevel(payload["level"])
+    feedback = payload.get("feedback", "")
 
     record = AssessmentRecord(
         user_id=user_id,
@@ -104,6 +105,11 @@ def run_assessment(
         level=level,
         questions=questions,
         raw_answers=answers,
+        confidence=float(payload.get("confidence", 0.0)),
+        strengths=payload.get("strengths", []),
+        weaknesses=payload.get("weaknesses", payload.get("gaps", [])),
+        structured_scores=payload.get("structured_scores", {}),
+        recommended_plan_style=payload.get("recommended_plan_style", "blended"),
         llm_feedback=feedback,
     )
     data_store.assessment_records.save(record)

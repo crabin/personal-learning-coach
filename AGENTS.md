@@ -41,3 +41,12 @@ Run agent 1, wait, then run agent 2
 
 Before delegating complex work, ensure `task_plan.md` exists (see `CLAUDE.md` → planning-with-files).
 Agents should read the plan file at session start to restore context.
+
+
+<claude-mem-context>
+# Memory Context
+
+# [personal-learning-coach] recent context, 2026-04-28 12:35am GMT+9
+
+No previous sessions found.
+</claude-mem-context>

@@ -8,11 +8,10 @@ import os
 from datetime import UTC, datetime
 from typing import Any
 
-import anthropic
-
 from personal_learning_coach import data_store
 from personal_learning_coach.delivery.base import DeliveryAdapter
 from personal_learning_coach.delivery.local import LocalDelivery
+from personal_learning_coach.llm_client import generate_text
 from personal_learning_coach.models import (
     LearnerLevel,
     LearningPlan,
@@ -24,12 +23,6 @@ from personal_learning_coach.models import (
 from personal_learning_coach.prompts.generation import CONTENT_GENERATION_PROMPT, CONTENT_SYSTEM
 
 logger = logging.getLogger(__name__)
-
-MODEL = "claude-haiku-4-5-20251001"
-
-
-def _client() -> anthropic.Anthropic:
-    return anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
 
 def _parse_json(text: str) -> Any:
@@ -70,34 +63,32 @@ def generate_push_content(
     domain: str,
     topic: TopicNode,
     level: LearnerLevel,
-    client: anthropic.Anthropic | None = None,
+    client: Any | None = None,
 ) -> dict[str, str]:
-    """Call Claude to generate theory + practice + reflection content.
+    """Generate theory + practice + reflection content.
 
     Returns:
         Dict with keys: theory, practice_question, reflection_question.
     """
-    cl = client or _client()
     prompt = CONTENT_GENERATION_PROMPT.format(
         domain=domain,
         topic_title=topic.title,
         topic_description=topic.description,
         level=level.value,
     )
-    response = cl.messages.create(
-        model=MODEL,
-        max_tokens=2048,
+    raw = generate_text(
         system=CONTENT_SYSTEM,
-        messages=[{"role": "user", "content": prompt}],
+        prompt=prompt,
+        max_tokens=2048,
+        client=client,
     )
-    raw = response.content[0].text  # type: ignore[union-attr]
     return _parse_json(raw)
 
 
 def push_today(
     user_id: str,
     domain: str,
-    client: anthropic.Anthropic | None = None,
+    client: Any | None = None,
     adapter: DeliveryAdapter | None = None,
 ) -> PushRecord | None:
     """Select, generate, deliver, and persist today's push.
@@ -105,7 +96,7 @@ def push_today(
     Args:
         user_id: Learner's ID.
         domain: Target learning domain.
-        client: Optional Anthropic client (for testing).
+        client: Optional LLM client or test double.
         adapter: Optional delivery adapter (for testing).
 
     Returns:
@@ -134,16 +125,20 @@ def push_today(
         user_id=user_id,
         topic_id=topic.topic_id,
         domain=domain,
+        push_type="review" if progress.status == TopicStatus.REVIEW_DUE else "new_topic",
         theory=content.get("theory", ""),
         practice_question=content.get("practice_question", ""),
         reflection_question=content.get("reflection_question", ""),
         scheduled_at=datetime.now(UTC),
+        resource_snapshot=content.get("resources", {}),
         content_snapshot=content,
     )
 
     delivery = adapter or _get_delivery_adapter()
     delivery.deliver(push)
     push.delivered_at = datetime.now(UTC)
+    push.delivery_channel = delivery.__class__.__name__.replace("Delivery", "").lower() or "local"
+    push.delivery_result = "delivered"
 
     data_store.push_records.save(push)
 
