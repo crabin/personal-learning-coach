@@ -13,6 +13,7 @@ class AppConfig(BaseModel):
     delivery_mode: str = "local"
     openai_api_key: str = ""
     openai_model: str = "gpt-4.5"
+    openai_base_url: str = ""
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
     api_auth_token: str = ""
@@ -45,6 +46,7 @@ def load_config() -> AppConfig:
             delivery_mode=os.environ.get("DELIVERY_MODE", "local"),
             openai_api_key=os.environ.get("OPENAI_API_KEY", ""),
             openai_model=os.environ.get("OPENAI_MODEL", "gpt-4.5"),
+            openai_base_url=os.environ.get("OPENAI_BASE_URL", os.environ.get("BASE_URL", "")),
             telegram_bot_token=os.environ.get("TELEGRAM_BOT_TOKEN", ""),
             telegram_chat_id=os.environ.get("TELEGRAM_CHAT_ID", ""),
             api_auth_token=os.environ.get("API_AUTH_TOKEN", ""),

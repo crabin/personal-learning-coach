@@ -15,8 +15,12 @@ def get_model() -> str:
     return os.environ.get("OPENAI_MODEL", DEFAULT_MODEL)
 
 
+def get_base_url() -> str | None:
+    return os.environ.get("OPENAI_BASE_URL") or os.environ.get("BASE_URL") or None
+
+
 def get_client() -> OpenAI:
-    return OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    return OpenAI(api_key=os.environ["OPENAI_API_KEY"], base_url=get_base_url())
 
 
 def extract_text(response: Any) -> str:
