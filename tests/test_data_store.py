@@ -4,9 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
-from personal_learning_coach.data_store import _Store, user_profiles
+from personal_learning_coach.data_store import _Store
 from personal_learning_coach.models import DomainEnrollment, UserProfile
 
 

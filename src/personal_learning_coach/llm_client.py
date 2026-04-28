@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import Any, cast
 
 from openai import OpenAI
 
@@ -22,9 +22,9 @@ def get_client() -> OpenAI:
 def extract_text(response: Any) -> str:
     """Extract text from either chat completions or messages-style responses."""
     if hasattr(response, "content"):
-        return response.content[0].text  # type: ignore[union-attr]
+        return cast(str, response.content[0].text)
     if hasattr(response, "choices"):
-        return response.choices[0].message.content or ""
+        return cast(str, response.choices[0].message.content or "")
     raise ValueError("Unsupported LLM response shape")
 
 

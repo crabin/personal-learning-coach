@@ -17,6 +17,7 @@ from personal_learning_coach.models import (
     TopicStatus,
     UserProfile,
 )
+from personal_learning_coach.online_resource import OnlineResourceService
 
 
 def test_user_profile_round_trip() -> None:
@@ -136,3 +137,64 @@ def test_assessment_record() -> None:
     assert restored.confidence == 0.82
     assert restored.strengths == ["Understands model architecture basics"]
     assert restored.recommended_plan_style == "practice"
+
+
+def test_online_resource_service_dedupes_and_caches() -> None:
+    calls: list[tuple[str, str, str, int]] = []
+
+    def fetcher(domain: str, topic: str, language: str, limit: int) -> list[dict[str, str]]:
+        calls.append((domain, topic, language, limit))
+        return [
+            {"title": "Transformer", "url": "https://example.com/a", "summary": "One"},
+            {"title": "Transformer", "url": "https://example.com/a/", "summary": "Duplicate"},
+            {"title": "Attention", "url": "https://example.com/b", "summary": "Two"},
+        ]
+
+    service = OnlineResourceService(fetcher=fetcher)
+    first = service.recommend_resources("ai_agent", "Transformers", language="en", limit=3)
+    second = service.recommend_resources("ai_agent", "Transformers", language="en", limit=3)
+
+    assert calls == [("ai_agent", "Transformers", "en", 3)]
+    assert first["source"] == "online"
+    assert second["source"] == "cache"
+    assert len(first["items"]) == 2
+
+
+def test_telegram_delivery_raises_without_required_env() -> None:
+    from personal_learning_coach.delivery.telegram import TelegramDelivery
+
+    try:
+        TelegramDelivery(bot_token="", chat_id="")
+    except ValueError as exc:
+        assert "TELEGRAM_BOT_TOKEN" in str(exc)
+    else:
+        raise AssertionError("Expected missing Telegram config to raise ValueError")
+
+
+def test_telegram_delivery_posts_message() -> None:
+    import httpx
+
+    from personal_learning_coach.delivery.telegram import TelegramDelivery
+
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"ok": True, "result": {"message_id": 1}})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    delivery = TelegramDelivery(bot_token="token", chat_id="chat", client=client)
+    push = PushRecord(
+        user_id="u1",
+        topic_id="t1",
+        domain="ai_agent",
+        theory="Test theory.",
+        practice_question="Practice?",
+        reflection_question="Reflect?",
+    )
+
+    delivery.deliver(push)
+
+    assert len(requests) == 1
+    assert requests[0].url.path.endswith("/bottoken/sendMessage")
+    assert b"Practice?" in requests[0].content

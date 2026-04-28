@@ -7,7 +7,7 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, Generic, TypeVar, cast
 
 from pydantic import BaseModel
 
@@ -17,6 +17,7 @@ from personal_learning_coach.models import (
     EvaluationRecord,
     LearningPlan,
     PushRecord,
+    RuntimeEvent,
     SubmissionRecord,
     TopicProgress,
     UserProfile,
@@ -36,7 +37,7 @@ def _data_dir() -> Path:
     return path
 
 
-class _Store:
+class _Store(Generic[T]):
     """Generic typed JSON store backed by a single file per entity collection."""
 
     def __init__(self, filename: str, model: type[T]) -> None:
@@ -66,7 +67,8 @@ class _Store:
     def all(self) -> list[T]:
         raw = self._load_raw()
         results: list[T] = []
-        for record in raw.get("records", {}).values():
+        records = cast(dict[str, Any], raw.get("records", {}))
+        for record in records.values():
             try:
                 results.append(self._model.model_validate(record))
             except Exception as exc:
@@ -97,7 +99,7 @@ class _Store:
         return True
 
     def filter(self, **kwargs: Any) -> list[T]:
-        return [r for r in self.all() if _matches(r, kwargs)]
+        return [record for record in self.all() if _matches(record, kwargs)]
 
 
 def _json_default(obj: Any) -> Any:
@@ -135,3 +137,4 @@ push_records = _Store("push_records.json", PushRecord)
 submission_records = _Store("submission_records.json", SubmissionRecord)
 evaluation_records = _Store("evaluation_records.json", EvaluationRecord)
 assessment_records = _Store("assessment_records.json", AssessmentRecord)
+runtime_events = _Store("runtime_events.json", RuntimeEvent)

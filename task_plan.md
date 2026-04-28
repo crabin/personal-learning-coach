@@ -9,7 +9,8 @@
 
 1. Phase 1 已完成，`pytest -q` 与主干 LLM 调用已打通
 2. Phase 2 已完成：关键字段、领域生命周期操作、API/CLI 最小配置输入输出都已补齐
-3. 若按“需求规格说明书”验收，最终综测、在线资源与更完整的长期运行能力仍未完成
+3. 若按“需求规格说明书”验收，在线资源与更完整的长期运行能力仍未完成
+4. Phase 3 已完成：复习优先、报告增强、final assessment 提交链路与中断恢复验证都已补齐
 
 ## 里程碑状态总览
 
@@ -80,7 +81,7 @@
 - 无。Phase 2 验收项已完成。
 
 ### Phase 3: 完善复习、报告和最终结业
-状态：`pending`
+状态：`complete`
 
 目标：
 - 提升“长期教学闭环”完整度
@@ -96,8 +97,18 @@
 - 报告能展示趋势和阶段总结
 - 达标用户可被标记完成
 
+本轮完成：
+- 已让 `review due` 任务在 `content_pusher.py` 中优先于新课推送
+- 已将“全话题掌握后”的领域状态从直接 `COMPLETED` 调整为 `FINAL_ASSESSMENT_DUE`
+- 已在 `mastery_engine.py` 中加入 `complete_final_assessment(...)`，支持通过/未通过后的状态流转
+- 已增强 `report_generator.py`，补充分数趋势、强弱项、常错点、final assessment readiness 与阶段总结文本
+- 已新增并通过相关测试：`tests/test_content_pusher.py`、`tests/test_evaluator.py`、`tests/test_report_generator.py`
+
+剩余：
+- 无。Phase 3 当前验收项已完成。
+
 ### Phase 4: 工程化与集成
-状态：`pending`
+状态：`complete`
 
 目标：
 - 让项目具备可交付、可维护、可部署条件
@@ -114,6 +125,42 @@
 - 核心质量检查可自动执行
 - 至少有一个真实消息渠道可用
 
+本轮完成：
+- 已新增 `src/personal_learning_coach/online_resource.py`，提供可注入的在线资源抓取服务
+- 已实现资源去重、内存缓存、抓取失败降级三项主能力
+- 已将在线资源推荐接入 `content_pusher.py`，并写入 `PushRecord.resource_snapshot`
+- 已尊重 enrollment 中的 `allow_online_resources` 偏好；未显式启用时默认不联网
+- 已让 `delivery/base.py` 在推送内容中渲染推荐资源区块
+- 已补充并通过资源增强相关测试
+- 已新增 `src/personal_learning_coach/delivery/telegram.py`，支持 Telegram Bot API 真实投递
+- 已让 `content_pusher.py` 支持 `DELIVERY_MODE=telegram`
+- 已补齐“投递失败也保留 PushRecord”的错误记录行为
+- 已补充并通过 Telegram 投递与失败记录相关测试
+- 已补齐 `README.md`，覆盖环境变量、CLI/API 启动、质量检查和已知限制
+- 已新增 `.github/workflows/ci.yml`，自动执行 `ruff check .` 和 `pytest -q`
+- 已将依赖与环境变量模板对齐到当前 OpenAI 主干实现
+- 已清理当前 `ruff` 问题并验证通过
+- 已清理当前 `mypy` 严格模式问题并验证 `mypy src` 通过
+- 已将 CI 升级为自动执行 `ruff check .`、`mypy src`、`pytest -q`
+- 已新增 `src/personal_learning_coach/config.py`，统一加载与校验运行配置
+- 已新增 `src/personal_learning_coach/security.py`，支持 `API_AUTH_TOKEN` 驱动的简易 API Key 认证
+- 已新增 `src/personal_learning_coach/backup_service.py` 与 `/admin/backup` 路由，支持 JSON 数据备份
+- 已为 CLI 增加 `backup` 命令
+- 已增强 `/health`，返回 `delivery_mode`、`auth_enabled`、`backup_dir` 与配置问题列表
+- 已补充并通过配置校验、认证与备份测试
+- 已新增 `src/personal_learning_coach/monitoring.py`，提供 runtime event 记录与日志配置
+- 已新增 `/admin/runtime-events`，可读取最近运行事件
+- 已将认证失败与备份成功接入 runtime event 记录
+- 已将 API/CLI 日志接到 `DATA_DIR/logs/app.log`
+- 已新增 `/admin/alerts`，提供基于 runtime event 的轻量告警视图
+- 已新增 `restore_backup(...)`、`/admin/restore` 与 `coach restore`
+- 已支持 `ADMIN_READ_TOKEN` / `ADMIN_WRITE_TOKEN` 读写分离
+- 已补充未处理异常记录测试、告警测试与备份恢复演练测试
+- 已完成全量验证：`ruff check .`、`mypy src`、`pytest -q`
+
+剩余：
+- 无。Phase 4 当前验收项已完成。
+
 ## 决策记录
 
 1. 当前项目适合按“先修通主干，再补字段和增强能力”的顺序推进，而不是继续平铺新模块。
@@ -128,7 +175,8 @@
 | LLM SDK 双栈混用 | 核心流程不可预测，测试失真 | 统一到单一 provider 抽象 |
 | README 为空 | 难以交接和复现 | 在工程化阶段优先补齐 |
 | 数据层缺少原子写入/备份 | 与实施计划不一致 | 在 M1 收尾阶段补上 |
-| 真实投递与联网资源未落地 | 无法达到长期运行目标 | 在主干稳定后进入增强阶段 |
+| README/CI 仍缺失 | 影响交付与新成员接入 | 下一步优先补工程化文档与质量检查 |
+| 更细粒度的权限模型仍未实现 | 未来多角色场景扩展受限 | 进入后续增强阶段时再拆分 |
 
 ## 错误记录
 

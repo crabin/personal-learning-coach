@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
+from typing import Any, cast
 
 from personal_learning_coach import data_store
 from personal_learning_coach.llm_client import generate_text
@@ -47,7 +47,7 @@ def _evaluate_answers_payload(
     qa_text = build_qa_pairs(questions, answers)
     prompt = ASSESSMENT_EVALUATE_PROMPT.format(domain=domain, qa_pairs=qa_text)
     raw = _chat(ASSESSMENT_SYSTEM, prompt, client)
-    return _parse_json(raw)
+    return cast(dict[str, Any], _parse_json(raw))
 
 
 def generate_assessment_questions(
@@ -56,7 +56,7 @@ def generate_assessment_questions(
     """Ask the LLM to generate assessment questions for the domain."""
     prompt = ASSESSMENT_QUESTIONS_PROMPT.format(domain=domain)
     raw = _chat(ASSESSMENT_SYSTEM, prompt, client)
-    data = _parse_json(raw)
+    data = cast(dict[str, Any], _parse_json(raw))
     return [q["text"] for q in data["questions"]]
 
 

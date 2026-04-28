@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
+from typing import Any, cast
 
 from personal_learning_coach import data_store
 from personal_learning_coach.llm_client import generate_text
@@ -81,7 +81,7 @@ def generate_plan(
         max_tokens=4096,
         client=client,
     )
-    data = _parse_json(raw)
+    data = cast(dict[str, Any], _parse_json(raw))
 
     topics = [
         TopicNode(

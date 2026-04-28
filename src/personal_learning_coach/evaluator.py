@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
+from typing import Any, cast
 
 from personal_learning_coach import data_store
 from personal_learning_coach.llm_client import generate_text
 from personal_learning_coach.models import (
     DimensionScore,
     EvaluationRecord,
+    LearningPlan,
     PushRecord,
     SubmissionRecord,
 )
@@ -98,7 +99,9 @@ def evaluate_submission(
         Persisted EvaluationRecord.
     """
     # Resolve topic title from the plan
-    plans = data_store.learning_plans.filter(user_id=submission.user_id, domain=submission.domain)
+    plans: list[LearningPlan] = data_store.learning_plans.filter(
+        user_id=submission.user_id, domain=submission.domain
+    )
     topic_title = submission.topic_id
     if plans:
         plan = plans[0]
@@ -120,7 +123,7 @@ def evaluate_submission(
         max_tokens=2048,
         client=client,
     )
-    data = _parse_json(raw)
+    data = cast(dict[str, Any], _parse_json(raw))
 
     dims_raw: dict[str, dict[str, Any]] = data["dimensions"]
     dimension_scores = [

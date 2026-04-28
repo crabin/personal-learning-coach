@@ -6,13 +6,14 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
-
 from personal_learning_coach import data_store
 from personal_learning_coach.evaluator import _compute_overall, evaluate_submission
-from personal_learning_coach.mastery_engine import apply_evaluation, recalculate_mastery
+from personal_learning_coach.mastery_engine import (
+    apply_evaluation,
+    complete_final_assessment,
+    recalculate_mastery,
+)
 from personal_learning_coach.models import (
-    DimensionScore,
     DomainEnrollment,
     DomainStatus,
     EvaluationRecord,
@@ -200,4 +201,22 @@ def test_domain_completed_when_all_mastered(tmp_data_dir: Path) -> None:
     apply_evaluation(ev, progress)
 
     updated_enrollment = data_store.domain_enrollments.filter(user_id="u1", domain="ai_agent")
-    assert updated_enrollment[0].status == DomainStatus.COMPLETED
+    assert updated_enrollment[0].status == DomainStatus.FINAL_ASSESSMENT_DUE
+
+
+def test_complete_final_assessment_passed_marks_completed(tmp_data_dir: Path) -> None:
+    enrollment = DomainEnrollment(user_id="u1", domain="ai_agent", level=LearnerLevel.BEGINNER)
+    enrollment.status = DomainStatus.FINAL_ASSESSMENT_DUE
+    data_store.domain_enrollments.save(enrollment)
+
+    updated = complete_final_assessment("u1", "ai_agent", passed=True)
+    assert updated.status == DomainStatus.COMPLETED
+
+
+def test_complete_final_assessment_failed_returns_active(tmp_data_dir: Path) -> None:
+    enrollment = DomainEnrollment(user_id="u1", domain="ai_agent", level=LearnerLevel.BEGINNER)
+    enrollment.status = DomainStatus.FINAL_ASSESSMENT_DUE
+    data_store.domain_enrollments.save(enrollment)
+
+    updated = complete_final_assessment("u1", "ai_agent", passed=False)
+    assert updated.status == DomainStatus.ACTIVE

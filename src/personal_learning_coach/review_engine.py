@@ -4,14 +4,35 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
+from typing import TypedDict
 
 from personal_learning_coach import data_store
-from personal_learning_coach.models import LearningPlan, TopicProgress, TopicStatus
+from personal_learning_coach.models import EvaluationRecord, TopicProgress, TopicStatus
 
 logger = logging.getLogger(__name__)
 
 # Spaced repetition intervals in days
 REVIEW_INTERVALS = [1, 3, 7, 14, 30]
+
+
+class TopicSummary(TypedDict):
+    topic_id: str
+    status: str
+    mastery_score: float
+    avg_eval_score: float | None
+    attempts: int
+
+
+class WeeklySummary(TypedDict):
+    user_id: str
+    domain: str
+    generated_at: str
+    total_topics: int
+    mastered_topics: int
+    review_due_topics: int
+    mastery_rate: float
+    avg_score: float
+    topic_summaries: list[TopicSummary]
 
 
 def _review_interval_days(attempt: int) -> int:
@@ -26,8 +47,8 @@ def get_due_reviews(user_id: str, domain: str) -> list[TopicProgress]:
     A topic is due when its next_review_at is in the past and status is REVIEW_DUE.
     """
     now = datetime.now(UTC)
-    candidates = data_store.topic_progress.filter(user_id=user_id, domain=domain)
-    due = []
+    candidates: list[TopicProgress] = data_store.topic_progress.filter(user_id=user_id, domain=domain)
+    due: list[TopicProgress] = []
     for p in candidates:
         if p.status == TopicStatus.REVIEW_DUE:
             if p.next_review_at is None or p.next_review_at <= now:
@@ -58,14 +79,14 @@ def reset_to_ready(progress: TopicProgress) -> TopicProgress:
     return progress
 
 
-def generate_weekly_summary(user_id: str, domain: str) -> dict[str, object]:
+def generate_weekly_summary(user_id: str, domain: str) -> WeeklySummary:
     """Generate a weekly learning summary for the user.
 
     Returns:
         Dict with keys: topics_covered, avg_score, mastery_rate, review_count.
     """
-    progress_list = data_store.topic_progress.filter(user_id=user_id, domain=domain)
-    evals = data_store.evaluation_records.filter(user_id=user_id, domain=domain)
+    progress_list: list[TopicProgress] = data_store.topic_progress.filter(user_id=user_id, domain=domain)
+    evals: list[EvaluationRecord] = data_store.evaluation_records.filter(user_id=user_id, domain=domain)
 
     total_topics = len(progress_list)
     mastered = sum(1 for p in progress_list if p.status == TopicStatus.MASTERED)
@@ -76,7 +97,7 @@ def generate_weekly_summary(user_id: str, domain: str) -> dict[str, object]:
     mastery_rate = round(mastered / total_topics, 2) if total_topics > 0 else 0.0
 
     # Collect per-topic scores
-    topic_summaries = []
+    topic_summaries: list[TopicSummary] = []
     for p in progress_list:
         topic_evals = [e for e in evals if e.topic_id == p.topic_id]
         topic_avg = (

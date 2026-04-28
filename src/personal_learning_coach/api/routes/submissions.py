@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from personal_learning_coach import data_store
 from personal_learning_coach.evaluator import evaluate_submission
 from personal_learning_coach.mastery_engine import apply_evaluation
-from personal_learning_coach.models import SubmissionRecord, TopicStatus
+from personal_learning_coach.models import DomainStatus, SubmissionRecord, TopicStatus
 
 router = APIRouter(prefix="/submissions", tags=["submissions"])
 
@@ -57,6 +57,11 @@ def submit_answer(body: SubmitRequest) -> SubmitResponse:
         progress_list[0].status = TopicStatus.SUBMITTED
         data_store.topic_progress.save(progress_list[0])
         apply_evaluation(evaluation, progress_list[0])
+
+    enrollments = data_store.domain_enrollments.filter(user_id=body.user_id, domain=push.domain)
+    if enrollments and enrollments[0].status == DomainStatus.AWAITING_SUBMISSION:
+        enrollments[0].status = DomainStatus.ACTIVE
+        data_store.domain_enrollments.save(enrollments[0])
 
     return SubmitResponse(
         submission_id=submission.submission_id,

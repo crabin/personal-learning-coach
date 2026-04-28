@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from datetime import UTC, datetime
@@ -12,7 +11,8 @@ from typing import Any
 from jinja2 import Environment, BaseLoader
 
 from personal_learning_coach import data_store
-from personal_learning_coach.review_engine import generate_weekly_summary
+from personal_learning_coach.models import DomainEnrollment, DomainStatus, EvaluationRecord, LearningPlan
+from personal_learning_coach.review_engine import WeeklySummary, generate_weekly_summary
 
 logger = logging.getLogger(__name__)
 
@@ -89,13 +89,23 @@ _HTML_TEMPLATE = """\
     {% endif %}
     </tbody>
   </table>
+
+  <h2>Stage Summary</h2>
+  <p>{{ insights.stage_summary }}</p>
+
+  <h2>Learning Insights</h2>
+  <p><strong>Trend:</strong> {{ insights.score_trend }}</p>
+  <p><strong>Top strengths:</strong> {{ insights.top_strengths|join(", ") if insights.top_strengths else "—" }}</p>
+  <p><strong>Top weaknesses:</strong> {{ insights.top_weaknesses|join(", ") if insights.top_weaknesses else "—" }}</p>
+  <p><strong>Common missed concepts:</strong> {{ insights.common_missed_concepts|join(", ") if insights.common_missed_concepts else "—" }}</p>
+  <p><strong>Final assessment ready:</strong> {{ "yes" if insights.final_assessment_ready else "no" }}</p>
 </body>
 </html>
 """
 
 
 def _resolve_topic_titles(user_id: str, domain: str) -> dict[str, str]:
-    plans = data_store.learning_plans.filter(user_id=user_id, domain=domain)
+    plans: list[LearningPlan] = data_store.learning_plans.filter(user_id=user_id, domain=domain)
     if not plans:
         return {}
     return {t.topic_id: t.title for t in plans[0].topics}
@@ -117,17 +127,53 @@ class _TopicRow:
         self.attempts = attempts
 
 
+def _score_trend(recent_evals: list[EvaluationRecord]) -> str:
+    if len(recent_evals) < 2:
+        return "stable"
+    chronological = sorted(recent_evals, key=lambda e: e.evaluated_at)
+    if chronological[-1].overall_score > chronological[0].overall_score:
+        return "improving"
+    if chronological[-1].overall_score < chronological[0].overall_score:
+        return "declining"
+    return "stable"
+
+
+def _top_items(values: list[str], limit: int = 3) -> list[str]:
+    counts: dict[str, int] = {}
+    for value in values:
+        if value:
+            counts[value] = counts.get(value, 0) + 1
+    return [item for item, _count in sorted(counts.items(), key=lambda pair: (-pair[1], pair[0]))[:limit]]
+
+
+def _stage_summary(
+    enrollment_status: str | None,
+    mastery_rate: float,
+    score_trend: str,
+    review_due_topics: int,
+) -> str:
+    if enrollment_status == DomainStatus.FINAL_ASSESSMENT_DUE.value:
+        return "The learner has mastered all planned topics and is ready for final assessment."
+    if enrollment_status == DomainStatus.COMPLETED.value:
+        return "The learner has completed the domain and passed the final assessment milestone."
+    if review_due_topics > 0:
+        return "The learner is progressing, but review tasks are due and should be prioritized."
+    if mastery_rate >= 0.75 and score_trend == "improving":
+        return "The learner is making strong progress with an improving score trend."
+    return "The learner is actively progressing through the plan and building mastery incrementally."
+
+
 def generate_report(user_id: str, domain: str) -> dict[str, Any]:
     """Build a full progress report dict (used for both HTML and JSON).
 
     Returns:
         Dict containing summary, topic details, and recent evaluations.
     """
-    summary = generate_weekly_summary(user_id, domain)
+    summary: WeeklySummary = generate_weekly_summary(user_id, domain)
     titles = _resolve_topic_titles(user_id, domain)
 
-    topic_rows = []
-    for ts in summary["topic_summaries"]:  # type: ignore[union-attr]
+    topic_rows: list[_TopicRow] = []
+    for ts in summary["topic_summaries"]:
         topic_rows.append(
             _TopicRow(
                 title=titles.get(ts["topic_id"], ts["topic_id"]),
@@ -138,8 +184,30 @@ def generate_report(user_id: str, domain: str) -> dict[str, Any]:
             )
         )
 
-    evals = data_store.evaluation_records.filter(user_id=user_id, domain=domain)
+    evals: list[EvaluationRecord] = data_store.evaluation_records.filter(user_id=user_id, domain=domain)
     recent_evals = sorted(evals, key=lambda e: e.evaluated_at, reverse=True)[:10]
+    enrollments: list[DomainEnrollment] = data_store.domain_enrollments.filter(user_id=user_id, domain=domain)
+    enrollment_status = enrollments[0].status.value if enrollments else None
+    score_trend = _score_trend(recent_evals)
+    strengths = [item for ev in evals for item in ev.strengths]
+    weaknesses = [item for ev in evals for item in ev.weaknesses]
+    missed_concepts = [item for ev in evals for item in ev.missed_concepts]
+    final_assessment_ready = enrollment_status == DomainStatus.FINAL_ASSESSMENT_DUE.value or (
+        summary["total_topics"] > 0 and summary["mastery_rate"] >= 1.0
+    )
+    insights = {
+        "score_trend": score_trend,
+        "top_strengths": _top_items(strengths),
+        "top_weaknesses": _top_items(weaknesses),
+        "common_missed_concepts": _top_items(missed_concepts),
+        "final_assessment_ready": final_assessment_ready,
+        "stage_summary": _stage_summary(
+            DomainStatus.FINAL_ASSESSMENT_DUE.value if final_assessment_ready else enrollment_status,
+            summary["mastery_rate"],
+            score_trend,
+            summary["review_due_topics"],
+        ),
+    }
 
     return {
         "user_id": user_id,
@@ -148,6 +216,7 @@ def generate_report(user_id: str, domain: str) -> dict[str, Any]:
         "summary": summary,
         "topic_rows": topic_rows,
         "recent_evals": recent_evals,
+        "insights": insights,
     }
 
 
@@ -163,6 +232,7 @@ def render_html(user_id: str, domain: str) -> str:
         summary=report["summary"],
         topic_rows=list(enumerate(report["topic_rows"], 1)),
         recent_evals=report["recent_evals"],
+        insights=report["insights"],
     )
 
 

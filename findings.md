@@ -14,7 +14,9 @@
 - 评估与推进：`evaluator.py`、`mastery_engine.py`
 - 复习与总结：`review_engine.py`、`report_generator.py`
 - 服务接口：`api/main.py` + `domains/submissions/reports/schedules` routes
-- 测试：共 60 个测试，目前已全量通过
+- 测试：当前共 89 个测试，已全量通过
+- 在线资源：`online_resource.py` 已接入推送主链路，并覆盖缓存、去重、失败降级
+- 真实投递：`delivery/telegram.py` 已落地，并可通过 `DELIVERY_MODE=telegram` 启用
 
 结论：项目已进入“功能收口与工程化修复阶段”，不是“从零设计阶段”。
 
@@ -58,16 +60,14 @@
 
 - 阶段 2 水平测试：代码已通过测试，并新增 assessment 结构化字段，但完整引导式偏好采集仍未实现
 - 阶段 3 计划生成：可生成 topics 和 topic progress，但动态调整能力未落地
-- 阶段 4 每日推送：具备选择、生成、持久化、local delivery、scheduler 雏形，且已补齐核心 push 元数据字段
-- 阶段 6 复习与回顾：已实现 1/3/7/14/30 天基础间隔，但未与推送主流程完整融合
-- 阶段 7 报告：已可生成 HTML 报告，但“趋势图、强弱项、常错点、阶段/结业报告”仍不足
+- 阶段 4 每日推送：具备选择、生成、持久化、local delivery、scheduler 雏形，已补齐核心 push 元数据字段，并支持 `review due` 优先
+- 阶段 6 复习与回顾：已实现 1/3/7/14/30 天基础间隔，并在中断场景下支持 `interruption_recovery` 唤醒提醒
+- 阶段 7 报告：已可生成 HTML 报告，并已补充趋势、强弱项、常错点与阶段总结
 
 ### 3.3 仍明显缺失的部分
 
-- 最终综测 / 结业判断
-- 在线资源增强
-- 真实消息渠道（如 Telegram）
-- 认证、监控、备份、README、CI
+- 更完整的认证/授权模型
+- 更细的部署与运维手册
 
 ## 4. 与需求规格说明书的关键差距
 
@@ -82,8 +82,8 @@
 
 仍未完成或未完全对齐的点：
 
-- 更复杂的长期运行策略还未建立，例如最终综测、资源增强、真实投递
-- CLI/API 虽已支持最小配置，但还没有更完整的管理工作流与帮助文档
+- 当前认证已支持 admin 读写分离 token，但还不是用户/角色级授权
+- 当前告警仍是查询式轻量视图，还没有主动通知通道
 
 ### 4.2 流程完整性不足
 
@@ -102,12 +102,44 @@
 
 ### 测试结果
 
-- `pytest -q`：`67 passed`
-- 覆盖率：`93%`
+- `pytest -q`：`94 passed`
+- 覆盖率：`91%`
+- 覆盖率：`92%`
+- `ruff check .`：通过
+- `mypy src`：通过
 - Phase 2 本轮新增契约测试已通过：
   - `tests/test_models.py`
   - `tests/test_api.py`
   - `tests/test_coach.py`
+- Phase 3 本轮新增行为测试已通过：
+  - `tests/test_content_pusher.py`
+  - `tests/test_evaluator.py`
+  - `tests/test_report_generator.py`
+  - `tests/test_api.py` 中 final assessment 场景
+  - `tests/test_coach.py` 中 final assessment CLI 场景
+  - `tests/test_content_pusher.py` 中 interruption recovery 场景
+  - `tests/test_api.py` 中 AWAITING_SUBMISSION -> ACTIVE 恢复场景
+- Phase 4 当前新增资源增强测试已通过：
+  - `tests/test_models.py` 中资源缓存与去重场景
+  - `tests/test_content_pusher.py` 中在线资源成功、关闭、失败降级场景
+  - `tests/test_content_pusher.py` 中本地投递资源区块渲染场景
+- Phase 4 当前新增真实投递测试已通过：
+  - `tests/test_models.py` 中 Telegram 配置校验与请求发送场景
+  - `tests/test_content_pusher.py` 中投递失败记录持久化场景
+- Phase 4 当前新增工程化产物已落地：
+  - `README.md`
+  - `.github/workflows/ci.yml`
+  - `.env.example` 与 `pyproject.toml` 已对齐 OpenAI 主干
+  - `mypy` 严格模式已打通并可进入 CI
+- Phase 4 当前新增运行保障能力已落地：
+  - `config.py` 统一配置校验
+  - `security.py` 简易 API Key 认证
+  - `backup_service.py` 与 `/admin/backup`
+  - `coach backup` CLI 入口
+  - `monitoring.py`、`/admin/runtime-events` 与 JSON 日志文件
+  - `/admin/alerts` 轻量告警视图
+  - `/admin/restore` 与 `coach restore` 恢复入口
+  - admin 读写 token 分离
 
 ### 已解决问题
 
@@ -115,7 +147,7 @@
 2. `content_pusher.py` 残留旧接口调用
 3. 测试 mock 与运行时代码响应结构不一致
 
-结论：Phase 1 的主干阻塞已经解除，当前优先级应转向需求规格中的字段补全与流程完整性。
+结论：Phase 4 已完成。主干阻塞、工程化交付、真实投递、资源增强、质量检查与基础运行保障都已落地；后续优先级应转向更高阶的授权、主动告警和运维手册增强。
 
 ## 6. 仓库状态补充
 
@@ -127,13 +159,27 @@
   - `src/personal_learning_coach/level_tester.py`
   - `src/personal_learning_coach/models.py`
   - `src/personal_learning_coach/plan_generator.py`
+  - `src/personal_learning_coach/report_generator.py`
+  - `src/personal_learning_coach/mastery_engine.py`
   - `src/personal_learning_coach/api/routes/domains.py`
   - `src/personal_learning_coach/api/routes/submissions.py`
+  - `src/personal_learning_coach/coach.py`
+  - `src/personal_learning_coach/content_pusher.py`
   - `tests/conftest.py`
   - `tests/test_api.py`
+  - `tests/test_content_pusher.py`
+  - `tests/test_evaluator.py`
+  - `tests/test_coach.py`
   - `tests/test_models.py`
+  - `tests/test_report_generator.py`
 - 未跟踪文件包括：
   - `.omc/`
   - `src/personal_learning_coach/llm_client.py`
+  - `src/personal_learning_coach/online_resource.py`
+  - `src/personal_learning_coach/delivery/telegram.py`
+  - `src/personal_learning_coach/config.py`
+  - `src/personal_learning_coach/security.py`
+  - `src/personal_learning_coach/backup_service.py`
+  - `src/personal_learning_coach/api/routes/admin.py`
 
 结论：后续修复应基于现有改动继续推进，避免误回滚用户正在进行的迁移工作。

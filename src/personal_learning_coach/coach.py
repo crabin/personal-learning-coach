@@ -4,17 +4,13 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 import sys
 
 from dotenv import load_dotenv
+from personal_learning_coach.monitoring import configure_logging
 
 load_dotenv()
-
-logging.basicConfig(
-    level=os.environ.get("LOG_LEVEL", "INFO"),
-    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-)
+configure_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -62,11 +58,13 @@ def _cmd_assess(args: argparse.Namespace) -> None:
 
 def _cmd_plan(args: argparse.Namespace) -> None:
     from personal_learning_coach import data_store
-    from personal_learning_coach.models import LearnerLevel
+    from personal_learning_coach.models import AssessmentRecord, LearnerLevel
     from personal_learning_coach.plan_generator import enroll_domain
 
     # Determine level from latest assessment or default
-    assessments = data_store.assessment_records.filter(user_id=args.user_id, domain=args.domain)
+    assessments: list[AssessmentRecord] = data_store.assessment_records.filter(
+        user_id=args.user_id, domain=args.domain
+    )
     if assessments:
         latest = sorted(assessments, key=lambda a: a.evaluated_at, reverse=True)[0]
         level = latest.level
@@ -138,9 +136,11 @@ def _cmd_report(args: argparse.Namespace) -> None:
 
 def _cmd_pause(args: argparse.Namespace) -> None:
     from personal_learning_coach import data_store
-    from personal_learning_coach.models import DomainStatus
+    from personal_learning_coach.models import DomainEnrollment, DomainStatus
 
-    enrollments = data_store.domain_enrollments.filter(user_id=args.user_id, domain=args.domain)
+    enrollments: list[DomainEnrollment] = data_store.domain_enrollments.filter(
+        user_id=args.user_id, domain=args.domain
+    )
     if not enrollments:
         print(f"Domain enrollment not found: {args.domain}", file=sys.stderr)
         sys.exit(1)
@@ -152,9 +152,11 @@ def _cmd_pause(args: argparse.Namespace) -> None:
 
 def _cmd_resume(args: argparse.Namespace) -> None:
     from personal_learning_coach import data_store
-    from personal_learning_coach.models import DomainStatus
+    from personal_learning_coach.models import DomainEnrollment, DomainStatus
 
-    enrollments = data_store.domain_enrollments.filter(user_id=args.user_id, domain=args.domain)
+    enrollments: list[DomainEnrollment] = data_store.domain_enrollments.filter(
+        user_id=args.user_id, domain=args.domain
+    )
     if not enrollments:
         print(f"Domain enrollment not found: {args.domain}", file=sys.stderr)
         sys.exit(1)
@@ -166,9 +168,11 @@ def _cmd_resume(args: argparse.Namespace) -> None:
 
 def _cmd_archive(args: argparse.Namespace) -> None:
     from personal_learning_coach import data_store
-    from personal_learning_coach.models import DomainStatus
+    from personal_learning_coach.models import DomainEnrollment, DomainStatus
 
-    enrollments = data_store.domain_enrollments.filter(user_id=args.user_id, domain=args.domain)
+    enrollments: list[DomainEnrollment] = data_store.domain_enrollments.filter(
+        user_id=args.user_id, domain=args.domain
+    )
     if not enrollments:
         print(f"Domain enrollment not found: {args.domain}", file=sys.stderr)
         sys.exit(1)
@@ -181,8 +185,11 @@ def _cmd_archive(args: argparse.Namespace) -> None:
 def _cmd_delete_domain(args: argparse.Namespace) -> None:
     from personal_learning_coach.api.routes.domains import _delete_records_for_domain
     from personal_learning_coach import data_store
+    from personal_learning_coach.models import DomainEnrollment
 
-    enrollments = data_store.domain_enrollments.filter(user_id=args.user_id, domain=args.domain)
+    enrollments: list[DomainEnrollment] = data_store.domain_enrollments.filter(
+        user_id=args.user_id, domain=args.domain
+    )
     if not enrollments:
         print(f"Domain enrollment not found: {args.domain}", file=sys.stderr)
         sys.exit(1)
@@ -191,6 +198,45 @@ def _cmd_delete_domain(args: argparse.Namespace) -> None:
         sys.exit(1)
     _delete_records_for_domain(args.user_id, args.domain)
     print(f"Domain deleted: {args.domain}")
+
+
+def _cmd_final_assessment(args: argparse.Namespace) -> None:
+    from personal_learning_coach.mastery_engine import submit_final_assessment
+
+    if not args.passed and not args.failed:
+        print("Final assessment requires either --passed or --failed", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        _record, enrollment = submit_final_assessment(
+            user_id=args.user_id,
+            domain=args.domain,
+            passed=bool(args.passed),
+            score=args.score,
+            feedback=args.feedback,
+        )
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        sys.exit(1)
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Final assessment submitted. Domain status: {enrollment.status.value}")
+
+
+def _cmd_backup(args: argparse.Namespace) -> None:
+    from personal_learning_coach.backup_service import create_backup
+
+    path = create_backup()
+    print(f"Backup created: {path}")
+
+
+def _cmd_restore(args: argparse.Namespace) -> None:
+    from personal_learning_coach.backup_service import restore_backup
+
+    path = restore_backup(args.backup_path or None)
+    print(f"Backup restored: {path}")
 
 
 def main() -> None:
@@ -236,6 +282,17 @@ def main() -> None:
     p_delete.add_argument("--domain", required=True)
     p_delete.add_argument("--confirm-delete", action="store_true")
 
+    p_final = subparsers.add_parser("final-assessment", help="Submit a final assessment result")
+    p_final.add_argument("--domain", required=True)
+    p_final.add_argument("--passed", action="store_true")
+    p_final.add_argument("--failed", action="store_true")
+    p_final.add_argument("--score", type=float, default=0.0)
+    p_final.add_argument("--feedback", default="")
+
+    subparsers.add_parser("backup", help="Create a backup of JSON data files")
+    p_restore = subparsers.add_parser("restore", help="Restore JSON data files from a backup")
+    p_restore.add_argument("--backup-path", default="")
+
     args = parser.parse_args()
 
     commands = {
@@ -248,6 +305,9 @@ def main() -> None:
         "resume": _cmd_resume,
         "archive": _cmd_archive,
         "delete-domain": _cmd_delete_domain,
+        "final-assessment": _cmd_final_assessment,
+        "backup": _cmd_backup,
+        "restore": _cmd_restore,
     }
     commands[args.command](args)
 

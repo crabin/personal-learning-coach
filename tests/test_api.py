@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import json
-import os
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -61,6 +58,7 @@ def test_health(tmp_data_dir: Path) -> None:
     resp = client.get("/health")
     assert resp.status_code == 200
     assert resp.json()["status"] == "ok"
+    assert "auth_enabled" in resp.json()
 
 
 def test_enroll_domain(tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -130,6 +128,42 @@ def test_archive_domain(tmp_data_dir: Path) -> None:
     assert resp.json()["status"] == "archived"
 
 
+def test_submit_final_assessment_marks_completed(tmp_data_dir: Path) -> None:
+    enrollment = DomainEnrollment(user_id="u1", domain="ai_agent", status=DomainStatus.FINAL_ASSESSMENT_DUE)
+    data_store.domain_enrollments.save(enrollment)
+
+    resp = client.post(
+        "/domains/ai_agent/final-assessment",
+        json={
+            "user_id": "u1",
+            "passed": True,
+            "score": 91.0,
+            "feedback": "Strong end-to-end performance.",
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "completed"
+    assert data["passed"] is True
+
+    saved = data_store.assessment_records.filter(user_id="u1", domain="ai_agent")
+    assert len(saved) == 1
+    assert saved[0].assessment_type == "final"
+    assert saved[0].passed is True
+    assert saved[0].structured_scores["final_score"] == 91.0
+
+
+def test_submit_final_assessment_requires_ready_status(tmp_data_dir: Path) -> None:
+    enrollment = DomainEnrollment(user_id="u1", domain="ai_agent", status=DomainStatus.ACTIVE)
+    data_store.domain_enrollments.save(enrollment)
+
+    resp = client.post(
+        "/domains/ai_agent/final-assessment",
+        json={"user_id": "u1", "passed": False, "feedback": "Needs more practice."},
+    )
+    assert resp.status_code == 409
+
+
 def test_delete_domain_requires_confirm(tmp_data_dir: Path) -> None:
     enrollment = DomainEnrollment(user_id="u1", domain="ai_agent", status=DomainStatus.ACTIVE)
     data_store.domain_enrollments.save(enrollment)
@@ -178,6 +212,8 @@ def test_submit_answer(tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> N
         theory="Theory.", practice_question="Q?", reflection_question="R?"
     )
     data_store.push_records.save(push)
+    enrollment = DomainEnrollment(user_id="u1", domain="ai_agent", status=DomainStatus.AWAITING_SUBMISSION)
+    data_store.domain_enrollments.save(enrollment)
 
     progress = TopicProgress(user_id="u1", topic_id="t1", domain="ai_agent", status=TopicStatus.PUSHED)
     data_store.topic_progress.save(progress)
@@ -207,6 +243,8 @@ def test_submit_answer(tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> N
     assert len(saved) == 1
     assert saved[0].normalized_answer == "My detailed answer here."
     assert saved[0].practice_result == "Built a small prototype."
+    enrollments = data_store.domain_enrollments.filter(user_id="u1", domain="ai_agent")
+    assert enrollments[0].status == DomainStatus.ACTIVE
 
 
 def test_submit_push_not_found(tmp_data_dir: Path) -> None:
@@ -216,3 +254,116 @@ def test_submit_push_not_found(tmp_data_dir: Path) -> None:
         "raw_answer": "Answer.",
     })
     assert resp.status_code == 404
+
+
+def test_health_reports_degraded_when_telegram_config_incomplete(
+    tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DELIVERY_MODE", "telegram")
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
+
+    resp = client.get("/health")
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "degraded"
+    assert len(resp.json()["issues"]) == 2
+
+
+def test_admin_backup_creates_files(tmp_data_dir: Path) -> None:
+    enrollment = DomainEnrollment(user_id="u1", domain="ai_agent", status=DomainStatus.ACTIVE)
+    data_store.domain_enrollments.save(enrollment)
+
+    resp = client.post("/admin/backup")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["file_count"] >= 1
+    backup_path = Path(data["backup_path"])
+    assert backup_path.exists()
+    assert (backup_path / "domain_enrollments.json").exists()
+
+
+def test_admin_backup_requires_api_key_when_enabled(
+    tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ADMIN_READ_TOKEN", "read-token")
+    monkeypatch.setenv("ADMIN_WRITE_TOKEN", "write-token")
+
+    no_header = client.post("/admin/backup")
+    assert no_header.status_code == 401
+
+    wrong_header = client.post("/admin/backup", headers={"x-api-key": "wrong"})
+    assert wrong_header.status_code == 401
+
+    read_only = client.post("/admin/backup", headers={"x-api-key": "read-token"})
+    assert read_only.status_code == 401
+
+    ok = client.post("/admin/backup", headers={"x-api-key": "write-token"})
+    assert ok.status_code == 200
+
+
+def test_admin_runtime_events_lists_backup_and_auth_events(
+    tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ADMIN_READ_TOKEN", "read-token")
+    monkeypatch.setenv("ADMIN_WRITE_TOKEN", "write-token")
+
+    client.post("/admin/backup", headers={"x-api-key": "wrong"})
+    client.post("/admin/backup", headers={"x-api-key": "write-token"})
+
+    resp = client.get("/admin/runtime-events", headers={"x-api-key": "read-token"})
+
+    assert resp.status_code == 200
+    data = resp.json()
+    categories = [item["category"] for item in data]
+    assert "auth" in categories
+    assert "backup" in categories
+
+
+def test_admin_alerts_surface_auth_failures(tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ADMIN_READ_TOKEN", "read-token")
+    monkeypatch.setenv("ADMIN_WRITE_TOKEN", "write-token")
+
+    client.post("/admin/backup", headers={"x-api-key": "wrong"})
+    resp = client.get("/admin/alerts", headers={"x-api-key": "read-token"})
+
+    assert resp.status_code == 200
+    alerts = resp.json()
+    assert any(alert["category"] == "auth" for alert in alerts)
+
+
+def test_admin_restore_recovers_deleted_data(tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ADMIN_READ_TOKEN", "read-token")
+    monkeypatch.setenv("ADMIN_WRITE_TOKEN", "write-token")
+    enrollment = DomainEnrollment(user_id="u1", domain="ai_agent", status=DomainStatus.ACTIVE)
+    data_store.domain_enrollments.save(enrollment)
+
+    backup = client.post("/admin/backup", headers={"x-api-key": "write-token"})
+    assert backup.status_code == 200
+    backup_path = backup.json()["backup_path"]
+
+    for record in data_store.domain_enrollments.all():
+        data_store.domain_enrollments.delete(record.enrollment_id)
+    assert data_store.domain_enrollments.all() == []
+
+    restore = client.post(
+        "/admin/restore",
+        headers={"x-api-key": "write-token"},
+        json={"backup_path": backup_path},
+    )
+    assert restore.status_code == 200
+    restored = data_store.domain_enrollments.filter(user_id="u1", domain="ai_agent")
+    assert len(restored) == 1
+
+
+def test_unhandled_exception_records_runtime_event(tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ADMIN_READ_TOKEN", "read-token")
+    failing_client = TestClient(app, raise_server_exceptions=False)
+
+    boom = failing_client.get("/boom")
+    assert boom.status_code == 500
+
+    events = failing_client.get("/admin/runtime-events", headers={"x-api-key": "read-token"})
+    assert events.status_code == 200
+    assert any(item["category"] == "exception" for item in events.json())

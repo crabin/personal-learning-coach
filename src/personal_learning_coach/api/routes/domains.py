@@ -8,7 +8,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from personal_learning_coach import data_store
-from personal_learning_coach.models import DomainStatus, LearnerLevel
+from personal_learning_coach.models import DomainEnrollment, DomainStatus, LearnerLevel
+from personal_learning_coach.review_engine import WeeklySummary
 
 router = APIRouter(prefix="/domains", tags=["domains"])
 
@@ -67,8 +68,8 @@ def enroll_domain_route(domain: str, body: EnrollRequest) -> EnrollResponse:
         level=enrollment.level.value,
         status=enrollment.status.value,
         topic_count=len(plan.topics),
-        current_level=enrollment.current_level.value,
-        target_level=enrollment.target_level.value,
+        current_level=(enrollment.current_level or enrollment.level).value,
+        target_level=(enrollment.target_level or enrollment.level).value,
         daily_minutes=enrollment.daily_minutes,
         learning_style=enrollment.learning_style,
         delivery_time=enrollment.delivery_time,
@@ -111,8 +112,25 @@ class DeleteDomainResponse(BaseModel):
     message: str
 
 
-def _get_enrollment_or_404(user_id: str, domain: str):
-    enrollments = data_store.domain_enrollments.filter(user_id=user_id, domain=domain)
+class FinalAssessmentRequest(BaseModel):
+    user_id: str
+    passed: bool
+    score: float = 0.0
+    feedback: str = ""
+
+
+class FinalAssessmentResponse(BaseModel):
+    domain: str
+    user_id: str
+    status: str
+    passed: bool
+    assessment_id: str
+    score: float
+    message: str
+
+
+def _get_enrollment_or_404(user_id: str, domain: str) -> DomainEnrollment:
+    enrollments: list[DomainEnrollment] = data_store.domain_enrollments.filter(user_id=user_id, domain=domain)
     if not enrollments:
         raise HTTPException(status_code=404, detail="Domain enrollment not found")
     return enrollments[0]
@@ -140,17 +158,17 @@ def get_domain_status(domain: str, user_id: str) -> DomainStatusResponse:
     from personal_learning_coach.review_engine import generate_weekly_summary
 
     enrollment = _get_enrollment_or_404(user_id, domain)
-    summary = generate_weekly_summary(user_id, domain)
+    summary: WeeklySummary = generate_weekly_summary(user_id, domain)
 
     return DomainStatusResponse(
         domain=domain,
         user_id=user_id,
         status=enrollment.status.value,
         level=enrollment.level.value,
-        total_topics=int(summary["total_topics"]),  # type: ignore[arg-type]
-        mastered_topics=int(summary["mastered_topics"]),  # type: ignore[arg-type]
-        review_due_topics=int(summary["review_due_topics"]),  # type: ignore[arg-type]
-        avg_score=float(summary["avg_score"]),  # type: ignore[arg-type]
+        total_topics=summary["total_topics"],
+        mastered_topics=summary["mastered_topics"],
+        review_due_topics=summary["review_due_topics"],
+        avg_score=summary["avg_score"],
     )
 
 
@@ -204,4 +222,34 @@ def delete_domain(domain: str, body: DeleteDomainRequest) -> DeleteDomainRespons
         user_id=body.user_id,
         deleted=True,
         message="Domain data deleted.",
+    )
+
+
+@router.post("/{domain}/final-assessment", response_model=FinalAssessmentResponse)
+def submit_final_assessment_route(
+    domain: str, body: FinalAssessmentRequest
+) -> FinalAssessmentResponse:
+    from personal_learning_coach.mastery_engine import submit_final_assessment
+
+    try:
+        record, enrollment = submit_final_assessment(
+            user_id=body.user_id,
+            domain=domain,
+            passed=body.passed,
+            score=body.score,
+            feedback=body.feedback,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    return FinalAssessmentResponse(
+        domain=domain,
+        user_id=body.user_id,
+        status=enrollment.status.value,
+        passed=body.passed,
+        assessment_id=record.assessment_id,
+        score=body.score,
+        message="Final assessment submitted.",
     )

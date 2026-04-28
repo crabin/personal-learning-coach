@@ -214,6 +214,8 @@ class AssessmentRecord(BaseModel):
     assessment_id: str = Field(default_factory=_uuid)
     user_id: str
     domain: str
+    assessment_type: str = "baseline"
+    passed: bool | None = None
     level: LearnerLevel = LearnerLevel.BEGINNER
     raw_answers: list[str] = Field(default_factory=list)
     questions: list[str] = Field(default_factory=list)
@@ -224,3 +226,14 @@ class AssessmentRecord(BaseModel):
     recommended_plan_style: str = "blended"
     llm_feedback: str = ""
     evaluated_at: datetime = Field(default_factory=_now)
+
+
+class RuntimeEvent(BaseModel):
+    """Operational event for monitoring, auditing, and debugging."""
+
+    event_id: str = Field(default_factory=_uuid)
+    level: str = "info"
+    category: str
+    message: str
+    details: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=_now)
