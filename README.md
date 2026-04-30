@@ -22,7 +22,7 @@ src/personal_learning_coach/
   api/                FastAPI 入口与路由
   coach.py            CLI 入口
   config.py           环境变量与运行配置
-  data_store.py       本地 JSON 数据存储
+  data_store.py       本地 SQLite 数据存储
   plan_generator.py   学习计划生成
   evaluator.py        作答评估
   report_generator.py 学习报告生成
@@ -241,10 +241,10 @@ http://127.0.0.1:8000/docs
 
 ## 数据与输出
 
-- 运行数据默认保存在 `DATA_DIR`，通常是 `./data`
+- 结构化运行数据默认保存在 `DATA_DIR/personal_learning_coach.sqlite3`
 - 本地推送内容会写入 `DATA_DIR/pushes/`
 - 日志会写入 `DATA_DIR/logs/app.log`
-- 备份目录默认是 `./data/backups`
+- SQLite 备份目录默认是 `./data/backups`
 
 ## 开发检查
 

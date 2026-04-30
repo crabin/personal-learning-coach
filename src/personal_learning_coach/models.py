@@ -205,6 +205,7 @@ class EvaluationRecord(BaseModel):
     improvement_suggestions: list[str] = Field(default_factory=list)
     mastery_estimate: float = 0.0
     next_action: str = "continue"  # continue | review | consolidate | final_test
+    progress_applied: bool = False
     evaluated_at: datetime = Field(default_factory=_now)
 
 

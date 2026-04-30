@@ -122,6 +122,7 @@ def apply_evaluation(
     Returns:
         Updated and persisted TopicProgress.
     """
+    data_store.evaluation_records.save(evaluation)
     mastery = recalculate_mastery(evaluation.user_id, evaluation.topic_id)
     progress.mastery_score = mastery
 
@@ -138,6 +139,8 @@ def apply_evaluation(
     progress.last_review_at = datetime.now(UTC)
     progress.updated_at = datetime.now(UTC)
     data_store.topic_progress.save(progress)
+    evaluation.progress_applied = True
+    data_store.evaluation_records.save(evaluation)
 
     # If mastered, try to unlock the next topic
     if progress.status == TopicStatus.MASTERED:
@@ -145,10 +148,11 @@ def apply_evaluation(
             user_id=evaluation.user_id, domain=evaluation.domain
         )
         if plans:
-            _unlock_next_topic(evaluation.user_id, plans[0], evaluation.topic_id)
+            plan = max(plans, key=lambda item: item.generated_at)
+            _unlock_next_topic(evaluation.user_id, plan, evaluation.topic_id)
 
             # Check if all topics are mastered → learner is ready for final assessment
-            if _all_topics_mastered(evaluation.user_id, plans[0]):
+            if _all_topics_mastered(evaluation.user_id, plan):
                 enrollments: list[DomainEnrollment] = data_store.domain_enrollments.filter(
                     user_id=evaluation.user_id, domain=evaluation.domain
                 )
@@ -163,3 +167,26 @@ def apply_evaluation(
                     )
 
     return progress
+
+
+def sync_unapplied_evaluations(user_id: str, domain: str) -> int:
+    """Apply any saved evaluations that have not yet updated topic progress."""
+    evaluations: list[EvaluationRecord] = data_store.evaluation_records.filter(
+        user_id=user_id, domain=domain
+    )
+    synced = 0
+    for evaluation in sorted(evaluations, key=lambda item: item.evaluated_at):
+        if evaluation.progress_applied:
+            continue
+        progress_list: list[TopicProgress] = data_store.topic_progress.filter(
+            user_id=user_id, topic_id=evaluation.topic_id
+        )
+        if not progress_list:
+            logger.warning(
+                "Cannot sync evaluation=%s because topic progress is missing",
+                evaluation.eval_id,
+            )
+            continue
+        apply_evaluation(evaluation, progress_list[0])
+        synced += 1
+    return synced

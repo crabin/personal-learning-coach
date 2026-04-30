@@ -15,7 +15,7 @@ from personal_learning_coach.models import (
     TopicProgress,
     TopicStatus,
 )
-from personal_learning_coach.report_generator import generate_report, render_html, save_report
+from personal_learning_coach.report_generator import generate_report, generate_report_payload, render_html, save_report
 
 
 def _setup(user_id: str = "u1", domain: str = "ai_agent") -> None:
@@ -122,3 +122,65 @@ def test_generate_report_trend_and_summary(tmp_data_dir: Path) -> None:
     assert report["insights"]["score_trend"] == "improving"
     assert report["insights"]["final_assessment_ready"] is True
     assert "ready for final assessment" in report["insights"]["stage_summary"].lower()
+
+
+def test_generate_report_uses_latest_plan_titles_only(tmp_data_dir: Path) -> None:
+    old_topic = TopicNode(title="Old Topic", order=0)
+    new_topic = TopicNode(title="New Topic", order=0)
+    old_plan = LearningPlan(user_id="u1", domain="ai_agent", level=LearnerLevel.BEGINNER, topics=[old_topic])
+    new_plan = LearningPlan(user_id="u1", domain="ai_agent", level=LearnerLevel.BEGINNER, topics=[new_topic])
+    data_store.learning_plans.save(old_plan)
+    data_store.learning_plans.save(new_plan)
+
+    old_progress = TopicProgress(
+        user_id="u1",
+        topic_id=old_topic.topic_id,
+        domain="ai_agent",
+        status=TopicStatus.LOCKED,
+    )
+    new_progress = TopicProgress(
+        user_id="u1",
+        topic_id=new_topic.topic_id,
+        domain="ai_agent",
+        status=TopicStatus.READY,
+    )
+    data_store.topic_progress.save(old_progress)
+    data_store.topic_progress.save(new_progress)
+
+    report = generate_report("u1", "ai_agent")
+
+    assert len(report["topic_rows"]) == 1
+    assert report["topic_rows"][0].title == "New Topic"
+
+
+def test_generate_report_payload_syncs_unapplied_evaluations(tmp_data_dir: Path) -> None:
+    topic = TopicNode(title="Adaptive Prompting", order=0)
+    plan = LearningPlan(user_id="u1", domain="ai_agent", level=LearnerLevel.BEGINNER, topics=[topic])
+    data_store.learning_plans.save(plan)
+    progress = TopicProgress(
+        user_id="u1",
+        topic_id=topic.topic_id,
+        domain="ai_agent",
+        status=TopicStatus.SUBMITTED,
+        mastery_score=0.0,
+        attempts=1,
+    )
+    data_store.topic_progress.save(progress)
+    evaluation = EvaluationRecord(
+        submission_id="s1",
+        user_id="u1",
+        topic_id=topic.topic_id,
+        domain="ai_agent",
+        overall_score=88.0,
+        llm_feedback="Good enough to continue.",
+        progress_applied=False,
+    )
+    data_store.evaluation_records.save(evaluation)
+
+    payload = generate_report_payload("u1", "ai_agent")
+
+    assert payload["topic_rows"][0]["status"] == "mastered"
+    assert payload["topic_rows"][0]["mastery_score"] == 88.0
+    saved = data_store.evaluation_records.get(evaluation.eval_id)
+    assert saved is not None
+    assert saved.progress_applied is True

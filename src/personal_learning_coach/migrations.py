@@ -1,10 +1,13 @@
-"""Schema version upgrade logic for JSON data files."""
+"""Schema and data migration helpers."""
 
 from __future__ import annotations
 
 import json
 import logging
 from pathlib import Path
+from typing import Any, cast
+
+from personal_learning_coach import data_store
 
 logger = logging.getLogger(__name__)
 
@@ -49,9 +52,35 @@ def migrate_file(path: Path) -> None:
 
 
 def migrate_all(data_dir: Path) -> None:
-    """Run migrations on every JSON file in data_dir."""
+    """Run JSON file migrations and import known collections into SQLite."""
+    data_store.initialize_database()
     for json_file in data_dir.glob("*.json"):
         try:
             migrate_file(json_file)
+            import_json_collection(json_file)
         except Exception as exc:
             logger.error("Migration failed for %s: %s", json_file, exc)
+
+
+def import_json_collection(path: Path) -> int:
+    """Import one legacy JSON collection into SQLite.
+
+    Unknown JSON files are ignored. Known records are validated through their
+    Pydantic model and upserted, so this function is safe to run repeatedly.
+    """
+    store = data_store.JSON_COLLECTIONS.get(path.name)
+    if store is None or not path.exists():
+        return 0
+
+    with path.open("r", encoding="utf-8") as f:
+        raw = json.load(f)
+    records = cast(dict[str, Any], raw.get("records", {}))
+
+    imported = 0
+    for record in records.values():
+        try:
+            store.save(store._model.model_validate(record))
+            imported += 1
+        except Exception as exc:
+            logger.warning("Skipping invalid legacy record in %s: %s", path, exc)
+    return imported

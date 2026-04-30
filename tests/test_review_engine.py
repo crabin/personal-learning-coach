@@ -8,6 +8,9 @@ from pathlib import Path
 from personal_learning_coach import data_store
 from personal_learning_coach.models import (
     EvaluationRecord,
+    LearnerLevel,
+    LearningPlan,
+    TopicNode,
     TopicProgress,
     TopicStatus,
 )
@@ -93,3 +96,36 @@ def test_generate_weekly_summary(tmp_data_dir: Path) -> None:
     assert summary["mastery_rate"] == 0.5
     assert summary["avg_score"] == 70.0
     assert len(summary["topic_summaries"]) == 2
+
+
+def test_generate_weekly_summary_uses_latest_plan_only(tmp_data_dir: Path) -> None:
+    old_topic = TopicNode(title="Old Topic", order=0)
+    new_topic = TopicNode(title="New Topic", order=0)
+    old_plan = LearningPlan(
+        user_id="u1",
+        domain="ai_agent",
+        level=LearnerLevel.BEGINNER,
+        topics=[old_topic],
+    )
+    new_plan = LearningPlan(
+        user_id="u1",
+        domain="ai_agent",
+        level=LearnerLevel.BEGINNER,
+        topics=[new_topic],
+    )
+    data_store.learning_plans.save(old_plan)
+    data_store.learning_plans.save(new_plan)
+
+    old_progress = TopicProgress(
+        user_id="u1", topic_id=old_topic.topic_id, domain="ai_agent", status=TopicStatus.LOCKED
+    )
+    new_progress = TopicProgress(
+        user_id="u1", topic_id=new_topic.topic_id, domain="ai_agent", status=TopicStatus.READY
+    )
+    data_store.topic_progress.save(old_progress)
+    data_store.topic_progress.save(new_progress)
+
+    summary = generate_weekly_summary("u1", "ai_agent")
+
+    assert summary["total_topics"] == 1
+    assert summary["topic_summaries"][0]["topic_id"] == new_topic.topic_id

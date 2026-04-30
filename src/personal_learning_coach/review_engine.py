@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TypedDict
 
 from personal_learning_coach import data_store
-from personal_learning_coach.models import EvaluationRecord, TopicProgress, TopicStatus
+from personal_learning_coach.models import EvaluationRecord, LearningPlan, TopicProgress, TopicStatus
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +79,15 @@ def reset_to_ready(progress: TopicProgress) -> TopicProgress:
     return progress
 
 
+def _active_plan_topic_ids(user_id: str, domain: str) -> set[str] | None:
+    plans: list[LearningPlan] = data_store.learning_plans.filter(user_id=user_id, domain=domain)
+    if not plans:
+        return None
+
+    latest_plan = max(plans, key=lambda plan: plan.generated_at)
+    return {topic.topic_id for topic in latest_plan.topics}
+
+
 def generate_weekly_summary(user_id: str, domain: str) -> WeeklySummary:
     """Generate a weekly learning summary for the user.
 
@@ -87,6 +96,11 @@ def generate_weekly_summary(user_id: str, domain: str) -> WeeklySummary:
     """
     progress_list: list[TopicProgress] = data_store.topic_progress.filter(user_id=user_id, domain=domain)
     evals: list[EvaluationRecord] = data_store.evaluation_records.filter(user_id=user_id, domain=domain)
+    active_topic_ids = _active_plan_topic_ids(user_id, domain)
+
+    if active_topic_ids is not None:
+        progress_list = [progress for progress in progress_list if progress.topic_id in active_topic_ids]
+        evals = [evaluation for evaluation in evals if evaluation.topic_id in active_topic_ids]
 
     total_topics = len(progress_list)
     mastered = sum(1 for p in progress_list if p.status == TopicStatus.MASTERED)

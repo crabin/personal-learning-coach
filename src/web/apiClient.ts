@@ -42,7 +42,7 @@ export class LearningCoachApi {
 
   constructor(options: ApiClientOptions) {
     this.baseUrl = normalizeBaseUrl(options.baseUrl);
-    this.fetcher = options.fetcher ?? fetch;
+    this.fetcher = options.fetcher ?? ((input, init) => globalThis.fetch(input, init));
     this.adminApiKey = options.adminApiKey ?? "";
   }
 

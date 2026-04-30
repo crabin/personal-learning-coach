@@ -289,8 +289,8 @@ def main() -> None:
     p_final.add_argument("--score", type=float, default=0.0)
     p_final.add_argument("--feedback", default="")
 
-    subparsers.add_parser("backup", help="Create a backup of JSON data files")
-    p_restore = subparsers.add_parser("restore", help="Restore JSON data files from a backup")
+    subparsers.add_parser("backup", help="Create a backup of the SQLite database")
+    p_restore = subparsers.add_parser("restore", help="Restore the SQLite database from a backup")
     p_restore.add_argument("--backup-path", default="")
 
     args = parser.parse_args()

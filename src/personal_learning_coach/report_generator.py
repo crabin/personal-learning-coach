@@ -11,6 +11,7 @@ from typing import Any
 from jinja2 import Environment, BaseLoader
 
 from personal_learning_coach import data_store
+from personal_learning_coach.mastery_engine import sync_unapplied_evaluations
 from personal_learning_coach.models import DomainEnrollment, DomainStatus, EvaluationRecord, LearningPlan
 from personal_learning_coach.review_engine import WeeklySummary, generate_weekly_summary
 
@@ -108,7 +109,8 @@ def _resolve_topic_titles(user_id: str, domain: str) -> dict[str, str]:
     plans: list[LearningPlan] = data_store.learning_plans.filter(user_id=user_id, domain=domain)
     if not plans:
         return {}
-    return {t.topic_id: t.title for t in plans[0].topics}
+    latest_plan = max(plans, key=lambda plan: plan.generated_at)
+    return {t.topic_id: t.title for t in latest_plan.topics}
 
 
 class _TopicRow:
@@ -169,6 +171,14 @@ def generate_report(user_id: str, domain: str) -> dict[str, Any]:
     Returns:
         Dict containing summary, topic details, and recent evaluations.
     """
+    synced_evaluations = sync_unapplied_evaluations(user_id, domain)
+    if synced_evaluations:
+        logger.info(
+            "Synced %d unapplied evaluations before report user=%s domain=%s",
+            synced_evaluations,
+            user_id,
+            domain,
+        )
     summary: WeeklySummary = generate_weekly_summary(user_id, domain)
     titles = _resolve_topic_titles(user_id, domain)
 
@@ -213,10 +223,46 @@ def generate_report(user_id: str, domain: str) -> dict[str, Any]:
         "user_id": user_id,
         "domain": domain,
         "generated_at": datetime.now(UTC).isoformat(),
+        "enrollment_status": enrollment_status,
         "summary": summary,
         "topic_rows": topic_rows,
         "recent_evals": recent_evals,
         "insights": insights,
+    }
+
+
+def generate_report_payload(user_id: str, domain: str) -> dict[str, Any]:
+    """Build a JSON-serializable report payload for the API and web UI."""
+    report = generate_report(user_id, domain)
+    return {
+        "user_id": report["user_id"],
+        "domain": report["domain"],
+        "generated_at": report["generated_at"],
+        "enrollment_status": report["enrollment_status"],
+        "summary": report["summary"],
+        "topic_rows": [
+            {
+                "title": row.title,
+                "status": row.status,
+                "mastery_score": row.mastery_score,
+                "avg_score": row.avg_score,
+                "attempts": row.attempts,
+            }
+            for row in report["topic_rows"]
+        ],
+        "recent_evals": [
+            {
+                "evaluated_at": evaluation.evaluated_at.isoformat(),
+                "overall_score": evaluation.overall_score,
+                "next_action": evaluation.next_action,
+                "feedback": evaluation.llm_feedback,
+                "strengths": evaluation.strengths,
+                "weaknesses": evaluation.weaknesses,
+                "missed_concepts": evaluation.missed_concepts,
+            }
+            for evaluation in report["recent_evals"]
+        ],
+        "insights": report["insights"],
     }
 
 

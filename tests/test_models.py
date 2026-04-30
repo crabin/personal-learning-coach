@@ -115,6 +115,7 @@ def test_evaluation_record_weighted_score() -> None:
     )
     # 0.30*80 + 0.25*70 + 0.25*90 + 0.20*60 = 24+17.5+22.5+12 = 76.0
     assert abs(ev.overall_score - 76.0) < 0.01
+    assert ev.progress_applied is False
 
 
 def test_assessment_record() -> None:

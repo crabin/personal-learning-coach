@@ -16,11 +16,14 @@ from personal_learning_coach.content_pusher import (
 )
 from personal_learning_coach.delivery.base import DeliveryAdapter
 from personal_learning_coach.models import (
+    AssessmentRecord,
     DomainEnrollment,
     DomainStatus,
+    EvaluationRecord,
     LearnerLevel,
     LearningPlan,
     PushRecord,
+    SubmissionRecord,
     TopicNode,
     TopicProgress,
     TopicStatus,
@@ -117,6 +120,11 @@ def test_select_next_topic_skips_locked(tmp_data_dir: Path) -> None:
 def test_generate_push_content(tmp_data_dir: Path) -> None:
     content = {
         "theory": "LLMs are language models...",
+        "basic_questions": [
+            "What is an LLM?",
+            "What is a prompt?",
+            "What is a token?",
+        ],
         "practice_question": "Describe how attention works.",
         "reflection_question": "What are the limits of LLMs?",
     }
@@ -124,13 +132,30 @@ def test_generate_push_content(tmp_data_dir: Path) -> None:
     topic = TopicNode(title="Intro to LLMs", order=0)
     result = generate_push_content("ai_agent", topic, LearnerLevel.BEGINNER, client=client)
     assert result["theory"] == content["theory"]
+    assert result["basic_questions"] == content["basic_questions"]
     assert "practice_question" in result
+
+
+def test_generate_push_content_normalizes_basic_questions(tmp_data_dir: Path) -> None:
+    content = {
+        "theory": "LLMs are language models...",
+        "basic_questions": [{"question": "What is an LLM?"}, 2],
+        "practice_question": "Describe how attention works.",
+        "reflection_question": "What are the limits of LLMs?",
+    }
+    client = _mock_client(json.dumps(content))
+    topic = TopicNode(title="Intro to LLMs", order=0)
+    result = generate_push_content("ai_agent", topic, LearnerLevel.BEGINNER, client=client)
+    assert len(result["basic_questions"]) == 3
+    assert result["basic_questions"][0] == "What is an LLM?"
+    assert result["basic_questions"][1] == "2"
 
 
 def test_push_today_delivers_and_persists(tmp_data_dir: Path) -> None:
     _setup_plan()
     content = {
         "theory": "LLMs use transformers.",
+        "basic_questions": ["Q1?", "Q2?", "Q3?"],
         "practice_question": "Explain self-attention.",
         "reflection_question": "How do embeddings help?",
     }
@@ -146,12 +171,97 @@ def test_push_today_delivers_and_persists(tmp_data_dir: Path) -> None:
     saved = data_store.push_records.get(push.push_id)
     assert saved is not None
     assert saved.theory == "LLMs use transformers."
+    assert saved.content_snapshot["basic_questions"] == ["Q1?", "Q2?", "Q3?"]
+
+
+def test_push_today_generates_with_learning_history_context(tmp_data_dir: Path) -> None:
+    plan = _setup_plan()
+    current_topic = plan.topics[0]
+    prior_topic = plan.topics[1]
+    enrollment = DomainEnrollment(
+        user_id="u1",
+        domain="ai_agent",
+        status=DomainStatus.ACTIVE,
+        level=LearnerLevel.BEGINNER,
+        target_level=LearnerLevel.INTERMEDIATE,
+        daily_minutes=45,
+        learning_style="practice",
+        allow_online_resources=False,
+    )
+    data_store.domain_enrollments.save(enrollment)
+    prior_push = PushRecord(
+        user_id="u1",
+        topic_id=prior_topic.topic_id,
+        domain="ai_agent",
+        theory="Prior theory",
+        practice_question="Build a retrieval prompt?",
+    )
+    data_store.push_records.save(prior_push)
+    submission = SubmissionRecord(
+        user_id="u1",
+        push_id=prior_push.push_id,
+        topic_id=prior_topic.topic_id,
+        domain="ai_agent",
+        raw_answer="I built a prompt but forgot evaluation criteria.",
+        practice_result="Prototype failed on ambiguous requests.",
+    )
+    data_store.submission_records.save(submission)
+    data_store.evaluation_records.save(
+        EvaluationRecord(
+            submission_id=submission.submission_id,
+            user_id="u1",
+            topic_id=prior_topic.topic_id,
+            domain="ai_agent",
+            overall_score=55.0,
+            llm_feedback="Needs clearer evaluation criteria.",
+            strengths=["clear examples"],
+            weaknesses=["evaluation criteria"],
+            missed_concepts=["rubrics"],
+            improvement_suggestions=["add explicit scoring rules"],
+            next_action="review",
+        )
+    )
+    data_store.assessment_records.save(
+        AssessmentRecord(
+            user_id="u1",
+            domain="ai_agent",
+            assessment_type="baseline",
+            level=LearnerLevel.BEGINNER,
+            strengths=["hands-on experiments"],
+            weaknesses=["systematic evaluation"],
+            llm_feedback="Overall baseline: strong builder, weak evaluator.",
+        )
+    )
+    progress = data_store.topic_progress.filter(user_id="u1", topic_id=current_topic.topic_id)[0]
+    progress.mastery_score = 42.0
+    data_store.topic_progress.save(progress)
+    content = {
+        "theory": "Adaptive lesson.",
+        "basic_questions": ["Q1?", "Q2?", "Q3?"],
+        "practice_question": "Create a rubric-backed prompt.",
+        "reflection_question": "How will you validate it?",
+    }
+    client = _mock_client(json.dumps(content))
+
+    push = push_today("u1", "ai_agent", client=client, adapter=_CapturingDelivery())
+
+    assert push is not None
+    prompt = client.messages.create.call_args.kwargs["messages"][0]["content"]
+    assert "Learning history context" in prompt
+    assert "Overall baseline: strong builder, weak evaluator." in prompt
+    assert "Needs clearer evaluation criteria." in prompt
+    assert "missed concepts: rubrics" in prompt
+    assert "Current topic progress: status=ready, mastery_score=42.0, attempts=0" in prompt
+    assert "target_level=intermediate" in prompt
+    assert push.content_snapshot["learning_context"]["recent_evaluations"][0]["overall_score"] == 55.0
+    assert push.content_snapshot["learning_context"]["current_topic_progress"]["mastery_score"] == 42.0
 
 
 def test_push_today_updates_topic_status(tmp_data_dir: Path) -> None:
     plan = _setup_plan()
     content = {
         "theory": "...",
+        "basic_questions": ["Q1?", "Q2?", "Q3?"],
         "practice_question": "Q?",
         "reflection_question": "R?",
     }
@@ -186,6 +296,7 @@ def test_push_today_resends_interruption_recovery(tmp_data_dir: Path) -> None:
         reflection_question="Resume reflection?",
         content_snapshot={
             "theory": "Resume this theory",
+            "basic_questions": ["Q1?", "Q2?", "Q3?"],
             "practice_question": "Resume practice?",
             "reflection_question": "Resume reflection?",
         },
@@ -206,6 +317,7 @@ def test_push_today_persists_failed_delivery_record(tmp_data_dir: Path) -> None:
     _setup_plan()
     content = {
         "theory": "LLMs use transformers.",
+        "basic_questions": ["Q1?", "Q2?", "Q3?"],
         "practice_question": "Explain self-attention.",
         "reflection_question": "How do embeddings help?",
     }
@@ -263,6 +375,7 @@ def test_push_today_includes_online_resources(tmp_data_dir: Path) -> None:
     data_store.domain_enrollments.save(enrollment)
     content = {
         "theory": "LLMs use transformers.",
+        "basic_questions": ["Q1?", "Q2?", "Q3?"],
         "practice_question": "Explain self-attention.",
         "reflection_question": "How do embeddings help?",
     }
@@ -298,6 +411,7 @@ def test_push_today_skips_online_resources_when_disabled(tmp_data_dir: Path) -> 
     data_store.domain_enrollments.save(enrollment)
     content = {
         "theory": "LLMs use transformers.",
+        "basic_questions": ["Q1?", "Q2?", "Q3?"],
         "practice_question": "Explain self-attention.",
         "reflection_question": "How do embeddings help?",
     }
@@ -317,6 +431,7 @@ def test_push_today_degrades_when_online_resource_fetch_fails(tmp_data_dir: Path
     data_store.domain_enrollments.save(enrollment)
     content = {
         "theory": "LLMs use transformers.",
+        "basic_questions": ["Q1?", "Q2?", "Q3?"],
         "practice_question": "Explain self-attention.",
         "reflection_question": "How do embeddings help?",
     }

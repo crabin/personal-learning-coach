@@ -54,6 +54,24 @@ def _apply_enrollment_preferences(
     return enrollment
 
 
+def _normalize_prerequisites(raw_prerequisites: Any) -> list[str]:
+    if not isinstance(raw_prerequisites, list):
+        return []
+
+    normalized: list[str] = []
+    for item in raw_prerequisites:
+        if isinstance(item, str):
+            value = item.strip()
+        elif isinstance(item, (int, float)):
+            value = str(item)
+        else:
+            value = str(item).strip()
+
+        if value:
+            normalized.append(value)
+    return normalized
+
+
 def generate_plan(
     user_id: str,
     domain: str,
@@ -88,7 +106,7 @@ def generate_plan(
             title=t["title"],
             description=t.get("description", ""),
             order=t.get("order", i),
-            prerequisites=t.get("prerequisites", []),
+            prerequisites=_normalize_prerequisites(t.get("prerequisites", [])),
         )
         for i, t in enumerate(data["topics"])
     ]

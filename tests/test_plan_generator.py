@@ -122,6 +122,21 @@ def test_generate_plan_initialises_topic_progress(tmp_data_dir: Path) -> None:
         assert p.status == TopicStatus.LOCKED
 
 
+def test_generate_plan_normalizes_non_string_prerequisites(tmp_data_dir: Path) -> None:
+    payload = {
+        "total_weeks": 4,
+        "topics": [
+            {"title": "Topic A", "order": 0, "prerequisites": []},
+            {"title": "Topic B", "order": 1, "prerequisites": [0, "Topic A"]},
+        ],
+    }
+    client = _mock_client(json.dumps(payload))
+
+    plan = generate_plan("u1", "ai_agent", LearnerLevel.BEGINNER, client=client)
+
+    assert plan.topics[1].prerequisites == ["0", "Topic A"]
+
+
 def test_enroll_domain_sets_active_status(tmp_data_dir: Path) -> None:
     payload = {
         "total_weeks": 2,

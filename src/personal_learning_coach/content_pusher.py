@@ -14,7 +14,9 @@ from personal_learning_coach.delivery.local import LocalDelivery
 from personal_learning_coach.delivery.telegram import TelegramDelivery
 from personal_learning_coach.llm_client import generate_text
 from personal_learning_coach.models import (
+    DomainEnrollment,
     DomainStatus,
+    EvaluationRecord,
     LearnerLevel,
     LearningPlan,
     PushRecord,
@@ -96,18 +98,20 @@ def generate_push_content(
     domain: str,
     topic: TopicNode,
     level: LearnerLevel,
+    learning_context: dict[str, Any] | None = None,
     client: Any | None = None,
-) -> dict[str, str]:
-    """Generate theory + practice + reflection content.
+) -> dict[str, Any]:
+    """Generate theory + 3 basics + practice + reflection content.
 
     Returns:
-        Dict with keys: theory, practice_question, reflection_question.
+        Dict with keys: theory, basic_questions, practice_question, reflection_question.
     """
     prompt = CONTENT_GENERATION_PROMPT.format(
         domain=domain,
         topic_title=topic.title,
         topic_description=topic.description,
         level=level.value,
+        learning_context=_format_learning_context(learning_context),
     )
     raw = generate_text(
         system=CONTENT_SYSTEM,
@@ -115,7 +119,243 @@ def generate_push_content(
         max_tokens=2048,
         client=client,
     )
-    return cast(dict[str, str], _parse_json(raw))
+    content = cast(dict[str, Any], _parse_json(raw))
+    content["basic_questions"] = _normalize_basic_questions(content.get("basic_questions"), topic.title)
+    content["theory"] = str(content.get("theory", "")).strip()
+    content["practice_question"] = str(content.get("practice_question", "")).strip()
+    content["reflection_question"] = str(content.get("reflection_question", "")).strip()
+    return content
+
+
+def _enum_value(value: Any) -> Any:
+    return getattr(value, "value", value)
+
+
+def _topic_titles(plan: LearningPlan) -> dict[str, str]:
+    return {topic.topic_id: topic.title for topic in plan.topics}
+
+
+def _build_learning_context(
+    user_id: str,
+    domain: str,
+    plan: LearningPlan,
+    topic: TopicNode,
+    progress: TopicProgress,
+    enrollment: DomainEnrollment | None,
+) -> dict[str, Any]:
+    titles = _topic_titles(plan)
+    evaluations = _recent_evaluations(user_id, domain, titles)
+    return {
+        "enrollment": _enrollment_context(enrollment),
+        "current_topic": {"topic_id": topic.topic_id, "title": topic.title, "order": topic.order},
+        "current_topic_progress": _progress_context(progress),
+        "overall_progress": _overall_progress(user_id, domain),
+        "recent_evaluations": evaluations,
+        "recent_submissions": _recent_submissions(user_id, domain, titles),
+        "recent_assessments": _recent_assessments(user_id, domain),
+        "generation_guidance": _generation_guidance(progress, evaluations),
+    }
+
+
+def _enrollment_context(enrollment: DomainEnrollment | None) -> dict[str, Any]:
+    if enrollment is None:
+        return {}
+    return {
+        "level": _enum_value(enrollment.level),
+        "target_level": _enum_value(enrollment.target_level),
+        "current_level": _enum_value(enrollment.current_level),
+        "daily_minutes": enrollment.daily_minutes,
+        "learning_style": enrollment.learning_style,
+        "language": enrollment.language,
+    }
+
+
+def _progress_context(progress: TopicProgress) -> dict[str, Any]:
+    return {
+        "status": _enum_value(progress.status),
+        "mastery_score": progress.mastery_score,
+        "attempts": progress.attempts,
+        "last_review_at": progress.last_review_at.isoformat() if progress.last_review_at else None,
+    }
+
+
+def _overall_progress(user_id: str, domain: str) -> dict[str, Any]:
+    progress_records: list[TopicProgress] = data_store.topic_progress.filter(user_id=user_id, domain=domain)
+    if not progress_records:
+        return {"total_topics": 0, "average_mastery": 0.0, "status_counts": {}}
+    status_counts: dict[str, int] = {}
+    for item in progress_records:
+        status = str(_enum_value(item.status))
+        status_counts[status] = status_counts.get(status, 0) + 1
+    average = sum(item.mastery_score for item in progress_records) / len(progress_records)
+    return {
+        "total_topics": len(progress_records),
+        "average_mastery": round(average, 2),
+        "status_counts": status_counts,
+    }
+
+
+def _recent_evaluations(user_id: str, domain: str, titles: dict[str, str]) -> list[dict[str, Any]]:
+    evaluations: list[EvaluationRecord] = data_store.evaluation_records.filter(user_id=user_id, domain=domain)
+    recent = sorted(evaluations, key=lambda item: item.evaluated_at, reverse=True)[:5]
+    return [
+        {
+            "topic_title": titles.get(item.topic_id, item.topic_id),
+            "overall_score": item.overall_score,
+            "next_action": item.next_action,
+            "feedback": item.llm_feedback,
+            "strengths": item.strengths[:3],
+            "weaknesses": item.weaknesses[:3],
+            "missed_concepts": item.missed_concepts[:3],
+            "improvement_suggestions": item.improvement_suggestions[:3],
+        }
+        for item in recent
+    ]
+
+
+def _recent_submissions(user_id: str, domain: str, titles: dict[str, str]) -> list[dict[str, Any]]:
+    submissions = data_store.submission_records.filter(user_id=user_id, domain=domain)
+    recent = sorted(submissions, key=lambda item: item.submitted_at, reverse=True)[:3]
+    return [
+        {
+            "topic_title": titles.get(item.topic_id, item.topic_id),
+            "answer_excerpt": item.normalized_answer[:240],
+            "practice_result": item.practice_result[:240],
+        }
+        for item in recent
+    ]
+
+
+def _recent_assessments(user_id: str, domain: str) -> list[dict[str, Any]]:
+    assessments = data_store.assessment_records.filter(user_id=user_id, domain=domain)
+    recent = sorted(assessments, key=lambda item: item.evaluated_at, reverse=True)[:3]
+    return [
+        {
+            "assessment_type": item.assessment_type,
+            "level": _enum_value(item.level),
+            "feedback": item.llm_feedback,
+            "strengths": item.strengths[:3],
+            "weaknesses": item.weaknesses[:3],
+            "scores": item.structured_scores,
+        }
+        for item in recent
+    ]
+
+
+def _generation_guidance(
+    progress: TopicProgress,
+    evaluations: list[dict[str, Any]],
+) -> str:
+    if progress.status == TopicStatus.REVIEW_DUE:
+        return "Generate supplemental review questions focused on weak and missed concepts."
+    if evaluations and evaluations[0]["next_action"] in {"review", "consolidate"}:
+        return "Generate consolidation questions before moving to new difficulty."
+    return "Generate the next-stage questions while still checking prerequisite understanding."
+
+
+def _format_learning_context(context: dict[str, Any] | None) -> str:
+    if not context:
+        return "No prior learning history is available. Generate an appropriate first lesson."
+
+    lines = [_format_enrollment_line(context), _format_current_progress_line(context)]
+    lines.extend(_format_assessment_lines(context.get("recent_assessments", [])))
+    lines.extend(_format_evaluation_lines(context.get("recent_evaluations", [])))
+    lines.extend(_format_submission_lines(context.get("recent_submissions", [])))
+    lines.append(f"Guidance: {context.get('generation_guidance', '')}")
+    return "\n".join(line for line in lines if line)
+
+
+def _format_enrollment_line(context: dict[str, Any]) -> str:
+    enrollment = context.get("enrollment", {})
+    if not enrollment:
+        return ""
+    return (
+        "Enrollment: "
+        f"level={enrollment.get('level')}, "
+        f"target_level={enrollment.get('target_level')}, "
+        f"current_level={enrollment.get('current_level')}, "
+        f"daily_minutes={enrollment.get('daily_minutes')}, "
+        f"learning_style={enrollment.get('learning_style')}"
+    )
+
+
+def _format_current_progress_line(context: dict[str, Any]) -> str:
+    progress = context.get("current_topic_progress", {})
+    overall = context.get("overall_progress", {})
+    return (
+        "Current topic progress: "
+        f"status={progress.get('status')}, "
+        f"mastery_score={progress.get('mastery_score')}, "
+        f"attempts={progress.get('attempts')}; "
+        f"overall_average_mastery={overall.get('average_mastery')}, "
+        f"status_counts={overall.get('status_counts')}"
+    )
+
+
+def _format_assessment_lines(assessments: list[dict[str, Any]]) -> list[str]:
+    return [
+        (
+            f"Assessment {item['assessment_type']}: level={item['level']}; "
+            f"feedback={item['feedback']}; "
+            f"strengths={', '.join(item['strengths'])}; "
+            f"weaknesses={', '.join(item['weaknesses'])}"
+        )
+        for item in assessments
+    ]
+
+
+def _format_evaluation_lines(evaluations: list[dict[str, Any]]) -> list[str]:
+    return [
+        (
+            f"Evaluation for {item['topic_title']}: score={item['overall_score']}, "
+            f"next_action={item['next_action']}, feedback={item['feedback']}, "
+            f"weaknesses: {', '.join(item['weaknesses'])}, "
+            f"missed concepts: {', '.join(item['missed_concepts'])}, "
+            f"suggestions: {', '.join(item['improvement_suggestions'])}"
+        )
+        for item in evaluations
+    ]
+
+
+def _format_submission_lines(submissions: list[dict[str, Any]]) -> list[str]:
+    return [
+        (
+            f"Submission for {item['topic_title']}: "
+            f"answer_excerpt={item['answer_excerpt']}; "
+            f"practice_result={item['practice_result']}"
+        )
+        for item in submissions
+    ]
+
+
+def _normalize_basic_questions(raw_questions: Any, topic_title: str) -> list[str]:
+    normalized: list[str] = []
+
+    if isinstance(raw_questions, list):
+        for item in raw_questions:
+            if isinstance(item, str):
+                value = item.strip()
+            elif isinstance(item, dict):
+                candidate = item.get("question") or item.get("q") or item.get("text") or ""
+                value = str(candidate).strip()
+            else:
+                value = str(item).strip()
+
+            if value:
+                normalized.append(value)
+
+    fallback_questions = [
+        f"{topic_title} 的核心概念是什么？请用 1-2 句话说明。",
+        f"{topic_title} 中最重要的术语或组成部分有哪些？",
+        f"{topic_title} 在实际使用中主要解决什么问题？",
+    ]
+
+    for question in fallback_questions:
+        if len(normalized) >= 3:
+            break
+        normalized.append(question)
+
+    return normalized[:3]
 
 
 def _find_interrupted_push(user_id: str, domain: str) -> tuple[PushRecord, TopicProgress] | None:
@@ -220,7 +460,9 @@ def push_today(
     enrollment = enrollments[0] if enrollments else None
     level = enrollment.level if enrollment else plan.level
 
-    content = generate_push_content(domain, topic, level, client)
+    learning_context = _build_learning_context(user_id, domain, plan, topic, progress, enrollment)
+    content = generate_push_content(domain, topic, level, learning_context, client)
+    content["learning_context"] = learning_context
     resource_snapshot = _build_resource_snapshot(
         content,
         domain,

@@ -198,10 +198,62 @@ def test_trigger_push_no_plan(tmp_data_dir: Path) -> None:
     assert resp.json()["delivered"] is False
 
 
-def test_get_report(tmp_data_dir: Path) -> None:
-    resp = client.get("/reports/ai_agent", params={"user_id": "u1"})
+def test_trigger_push_returns_generated_question_content(
+    tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from personal_learning_coach import content_pusher
+    from personal_learning_coach.models import PushRecord
+
+    fake_push = PushRecord(
+        user_id="u1",
+        topic_id="topic-1",
+        domain="ai_agent",
+        push_type="new_topic",
+        theory="Theory body",
+        practice_question="Practice prompt?",
+        reflection_question="Reflection prompt?",
+        content_snapshot={"basic_questions": ["Q1?", "Q2?", "Q3?"]},
+    )
+    monkeypatch.setattr(content_pusher, "push_today", lambda **_: fake_push)
+
+    resp = client.post("/schedules/trigger", json={"user_id": "u1", "domain": "ai_agent"})
+
     assert resp.status_code == 200
-    assert "Learning Report" in resp.text
+    data = resp.json()
+    assert data["delivered"] is True
+    assert data["theory"] == "Theory body"
+    assert data["basic_questions"] == ["Q1?", "Q2?", "Q3?"]
+    assert data["practice_question"] == "Practice prompt?"
+    assert data["reflection_question"] == "Reflection prompt?"
+
+
+def test_get_report(tmp_data_dir: Path) -> None:
+    topic = TopicNode(title="Prompt Debugging", order=0)
+    plan = LearningPlan(user_id="u1", domain="ai_agent", level=LearnerLevel.BEGINNER, topics=[topic])
+    data_store.learning_plans.save(plan)
+    enrollment = DomainEnrollment(user_id="u1", domain="ai_agent", status=DomainStatus.ACTIVE)
+    data_store.domain_enrollments.save(enrollment)
+    progress = TopicProgress(
+        user_id="u1",
+        topic_id=topic.topic_id,
+        domain="ai_agent",
+        status=TopicStatus.MASTERED,
+        mastery_score=86.0,
+        attempts=2,
+    )
+    data_store.topic_progress.save(progress)
+
+    resp = client.get("/reports/ai_agent", params={"user_id": "u1"})
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("application/json")
+    data = resp.json()
+    assert data["domain"] == "ai_agent"
+    assert data["enrollment_status"] == "active"
+    assert data["summary"]["total_topics"] == 1
+    assert data["topic_rows"][0]["title"] == "Prompt Debugging"
+    assert data["topic_rows"][0]["status"] == "mastered"
+    assert data["topic_rows"][0]["mastery_score"] == 86.0
 
 
 def test_submit_answer(tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -225,7 +277,6 @@ def test_submit_answer(tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> N
 
     from personal_learning_coach.api.routes import submissions as sub_mod
     monkeypatch.setattr(sub_mod, "evaluate_submission", lambda *a, **kw: fake_eval)
-    monkeypatch.setattr(sub_mod, "apply_evaluation", lambda *a, **kw: progress)
 
     resp = client.post("/submissions", json={
         "user_id": "u1",
@@ -243,6 +294,12 @@ def test_submit_answer(tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> N
     assert len(saved) == 1
     assert saved[0].normalized_answer == "My detailed answer here."
     assert saved[0].practice_result == "Built a small prototype."
+    saved_eval = data_store.evaluation_records.get(fake_eval.eval_id)
+    assert saved_eval is not None
+    assert saved_eval.progress_applied is True
+    updated_progress = data_store.topic_progress.filter(user_id="u1", topic_id="t1")
+    assert updated_progress[0].status == TopicStatus.MASTERED
+    assert updated_progress[0].mastery_score == 82.0
     enrollments = data_store.domain_enrollments.filter(user_id="u1", domain="ai_agent")
     assert enrollments[0].status == DomainStatus.ACTIVE
 
@@ -281,7 +338,7 @@ def test_admin_backup_creates_files(tmp_data_dir: Path) -> None:
     assert data["file_count"] >= 1
     backup_path = Path(data["backup_path"])
     assert backup_path.exists()
-    assert (backup_path / "domain_enrollments.json").exists()
+    assert (backup_path / "personal_learning_coach.sqlite3").exists()
 
 
 def test_admin_backup_requires_api_key_when_enabled(

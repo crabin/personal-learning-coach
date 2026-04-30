@@ -3,6 +3,20 @@
 更新日期：2026-04-28
 范围：基于当前仓库实现与项目文档对照所得出的事实性发现。
 
+## 8. 历史感知题目生成发现
+
+- `/schedules/trigger` 通过 `content_pusher.push_today(...)` 触发生成和投递。
+- 当前 `generate_push_content(...)` 只把 `domain`、`topic_title`、`topic_description`、`level` 放进 prompt，因此同一 topic/level 下 prompt 基本固定。
+- 可用于个性化的历史数据已经存在：`evaluation_records` 保存题目评价、分数、强弱项、missed concepts、next_action；`submission_records` 保存原始答案和实践结果；`assessment_records` 保存阶段/最终整体评价；`topic_progress` 保存 topic 状态、mastery、attempts；`domain_enrollments` 保存当前水平、目标水平和学习偏好。
+- `PushRecord.content_snapshot` 已保存 LLM 返回内容，适合追加轻量的 `learning_context` 摘要用于追溯。
+
+## 9. 报告预览与进度同步发现
+
+- 当前 `/reports/{domain}` 直接返回 `HTMLResponse`，前端 `loadReport()` 以 text 读取后写入 iframe `srcdoc`。
+- 前端报告页当前有两个手动按钮：`生成报告预览` 和 `同步领域状态`，切换到“学习报告”标签不会自动请求。
+- `report_generator.generate_report(...)` 已经能生成结构化 dict，但其中 `topic_rows` 是 `_TopicRow` 对象、`recent_evals` 是 Pydantic 模型，尚未作为 API JSON 直接返回。
+- Topic Details 的真实数据来自 `review_engine.generate_weekly_summary(...)`，会读取最新 `topic_progress` 和 `evaluation_records`；问题主要在 API/前端载荷与触发逻辑，而不是后端没有进度数据。
+
 ## 1. 实现覆盖度高于“骨架阶段”
 
 当前仓库并不是空壳，已经包含下列核心模块：
@@ -183,3 +197,11 @@
   - `src/personal_learning_coach/api/routes/admin.py`
 
 结论：后续修复应基于现有改动继续推进，避免误回滚用户正在进行的迁移工作。
+
+## 7. SQLite 迁移发现
+
+- 当前结构化持久层集中在 `src/personal_learning_coach/data_store.py`，业务层通过统一 store 单例访问，适合底层替换。
+- 现有模型均为 Pydantic `BaseModel`，主键可沿用第一个 `*_id` 字段的规则。
+- 当前真实 `data/*.json` collection 包含：domain enrollments、learning plans、topic progress、push records、submission records、evaluation records、runtime events；另有 `data/pushes/` Markdown 和 `data/logs/` 不属于结构化数据迁移范围。
+- 项目当前未依赖 SQLAlchemy，使用标准库 `sqlite3` 能满足需求且改动面最小。
+- 工作区已有与本任务无关的未提交业务/前端修改，本轮应避免回滚或格式化这些文件。

@@ -27,6 +27,119 @@
 
 ## 阶段任务
 
+### Phase 9: 提交评估进度同步标记
+状态：`complete`
+
+目标：
+- 每次提交答案完成评价后，明确记录该评价是否已经应用到学习进度
+- 正常提交链路立即更新 topic progress
+- 如果历史数据或中断导致评价未应用，刷新学习报告时自动补偿同步
+
+验收标准：
+- `EvaluationRecord` 有 `progress_applied` flag，默认未应用
+- `apply_evaluation(...)` 成功更新 topic progress 后会把 flag 标为已应用
+- 生成/刷新报告前会同步未应用的 evaluation
+- 同步后 Topic Details 展示最新 status、mastery score、attempts/avg score
+- 后端测试、ruff、mypy 通过
+
+完成情况：
+- 已为 `EvaluationRecord` 增加 `progress_applied`，默认 `False`
+- 已让 `apply_evaluation(...)` 先持久化评价，再计算并更新 topic progress，最后标记 `progress_applied=True`
+- 已新增 `sync_unapplied_evaluations(...)`，用于补偿同步历史或中断状态下未应用的评价
+- 已在 `generate_report(...)` 开始时自动同步未应用评价，报告刷新会修复学习进度
+- 已补充测试覆盖提交即更新、报告刷新补偿同步、flag 默认值
+- 已完成验证：`uv run pytest -q` 106 passed，`uv run ruff check .` 通过，`uv run mypy src` 通过
+
+### Phase 8: 结构化动态学习报告
+状态：`complete`
+
+目标：
+- 后端报告 API 返回结构化学习进度数据，而不是预渲染 HTML
+- 前端学习报告页直接渲染报告 UI，Topic Details 随提交评估后的最新 topic progress / evaluation 更新
+- 点击“学习报告”标签时自动加载报告和领域状态，不再需要手动点击“生成报告预览/同步领域状态”
+
+验收标准：
+- `/reports/{domain}` 返回 JSON，包含 summary、topic_rows、recent_evals、insights 和 enrollment_status
+- 前端报告页不再使用 iframe/srcdoc 渲染后端 HTML
+- 切换到报告页会自动请求报告与领域状态
+- 提交答案成功后，如果在报告页或随后进入报告页，能看到最新学习进度
+- 后端测试、前端测试、构建与类型检查通过
+
+完成情况：
+- 已新增 `generate_report_payload(...)`，将报告转换成可 JSON 序列化的结构化数据
+- 已将 `/reports/{domain}` 从 HTMLResponse 改为 JSON API
+- 已新增前端 `reportView.ts`，由前端渲染 Summary、Topic Details、Learning Insights 和 Recent Evaluations
+- 已移除报告页 iframe/srcdoc 主路径，改为 `reportContent` 动态渲染
+- 已让切换到“学习报告”标签时自动同步报告与领域状态，保留刷新按钮作为手动补偿
+- 已完成验证：`uv run pytest -q` 105 passed，`uv run ruff check .` 通过，`uv run mypy src` 通过，`npm test -- --run` 13 passed，`npm run build` 通过
+
+### Phase 7: 历史感知的题目生成
+状态：`complete`
+
+目标：
+- 点击生成题目时，先读取该用户在该领域的历史答题、题目评价、整体评价和学习进度
+- 将历史上下文和当前学习阶段一起交给 LLM，让下一次推送生成补充题或下一阶段题
+- 保留生成时使用的上下文摘要，便于排查为什么生成了这些题目
+
+验收标准：
+- `push_today` 生成新题时会把 evaluation、submission、assessment、topic progress 和 enrollment 信息纳入 prompt
+- review due 场景会显式要求补弱；正常 ready 场景会根据掌握情况推进下一阶段
+- 推送记录的 `content_snapshot` 包含本次生成所用的学习上下文摘要
+- 定向测试与全量测试通过
+
+完成情况：
+- 已在 `content_pusher.py` 中新增学习上下文构建，汇总 enrollment、当前 topic progress、整体 topic 状态、最近 submission、最近 evaluation 和 assessment
+- 已将学习上下文格式化后注入 `CONTENT_GENERATION_PROMPT`
+- 已把本次生成使用的 `learning_context` 保存进 `PushRecord.content_snapshot`
+- 已补充测试验证 prompt 会包含历史评价、整体 baseline、missed concepts、当前 mastery 和目标水平
+- 已完成验证：`uv run pytest -q` 105 passed，`uv run ruff check .` 通过，`uv run mypy src` 通过
+
+### Phase 6: 前端学习流程落地页
+状态：`complete`
+
+目标：
+- 将单页控制台拆成按学习创建逻辑组织的前端落地页
+- 覆盖学习目标创建、问题查看与回答、学习报告展示、管理与运维
+- 保留 API 请求调试视图，方便开发和运营排查
+
+完成情况：
+- 已将 `src/web/main.ts` 改为四页签工作台：学习目标、问题回答、学习报告、管理运维
+- 已重做 `src/web/styles.css`，补齐桌面与移动端响应式布局
+- 已保留现有 API 操作：enroll、status、trigger、submit、report、lifecycle、backup、events、alerts、restore、final assessment
+- 已补齐提交答案后的回答质量评估组件，展示分数、下一步动作、评估 ID 和反馈文本
+- 已通过浏览器自动化验证四个页面可切换，桌面与 390px 移动端布局可读
+- 已验证 `npm run build` 与 `npm test` 通过
+
+### Phase 5: SQLite 持久层迁移
+状态：`complete`
+
+目标：
+- 将运行期结构化数据从 `data/*.json` 切换到 `data/personal_learning_coach.sqlite3`
+- 保持现有 `data_store.<collection>.save/get/all/filter/delete` 调用方式兼容
+- 将当前真实 JSON 数据导入 SQLite，保证 CLI/API/报告/推送主链路继续可用
+
+任务：
+1. 用测试定义 SQLite store、JSON 导入、备份恢复的目标行为
+2. 将 `data_store.py` 改为基于标准库 `sqlite3` 的持久层
+3. 扩展 `migrations.py`，支持 schema 初始化与 JSON collection 幂等导入
+4. 更新 `backup_service.py`、admin API 和 CLI 文案，从 JSON 文件备份切换到 SQLite 数据库备份
+5. 更新 README 和相关测试，执行真实 `data/*.json` 到 `data/personal_learning_coach.sqlite3` 的迁移
+
+验收标准：
+- `uv run pytest` 全量通过
+- 临时 `DATA_DIR` 下会自动创建 SQLite 数据库文件
+- 旧 JSON collection 可重复导入且不产生重复记录
+- `/admin/backup`、`/admin/restore` 和 `coach backup/restore` 操作 SQLite 数据库
+- 当前真实数据可在 SQLite store 中通过现有接口读取
+
+完成情况：
+- 已将 `data_store.py` 切换为 SQLite 后端，保留原 store 公共接口与旧 `*.json` 构造参数兼容
+- 已新增 schema 初始化、collection 表、常用字段索引和 `payload_json` 兜底存储
+- 已扩展 `migrations.py`，支持旧 JSON collection 幂等导入 SQLite
+- 已将备份/恢复切换为复制 `personal_learning_coach.sqlite3`
+- 已执行真实数据迁移，生成 `data/personal_learning_coach.sqlite3`
+- 已验证 `uv run pytest -q`、`uv run ruff check .`、`uv run mypy src` 全部通过
+
 ### Phase 1: 打通当前主干闭环
 状态：`complete`
 

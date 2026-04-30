@@ -10,6 +10,26 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
 }
 
 describe("LearningCoachApi", () => {
+  it("uses window.fetch safely when no custom fetcher is provided", async () => {
+    const originalFetch = globalThis.fetch;
+    const fakeFetch = vi.fn().mockResolvedValue(jsonResponse({ status: "ok" }));
+    globalThis.fetch = fakeFetch;
+
+    try {
+      const api = new LearningCoachApi({ baseUrl: "/" });
+
+      await api.request("/health");
+
+      expect(fakeFetch).toHaveBeenCalledWith("/health", {
+        method: "GET",
+        headers: expect.any(Headers),
+        body: undefined,
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("builds query strings for GET requests", async () => {
     const fetcher = vi.fn().mockResolvedValue(jsonResponse({ status: "ok" }));
     const api = new LearningCoachApi({ baseUrl: "/", fetcher });

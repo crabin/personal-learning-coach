@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from personal_learning_coach.backup_service import create_backup, restore_backup
+from personal_learning_coach.data_store import DATABASE_FILENAME
 from personal_learning_coach.monitoring import current_alerts, recent_runtime_events
 from personal_learning_coach.security import require_admin_read, require_admin_write
 
@@ -46,7 +47,7 @@ class RestoreResponse(BaseModel):
 @router.post("/backup", response_model=BackupResponse)
 def backup_data(_: None = Depends(require_admin_write)) -> BackupResponse:
     backup_path = create_backup()
-    file_count = len(list(backup_path.glob("*.json")))
+    file_count = int((backup_path / DATABASE_FILENAME).exists())
     return BackupResponse(
         backup_path=str(backup_path),
         file_count=file_count,
@@ -78,7 +79,7 @@ def list_alerts(_: None = Depends(require_admin_read)) -> list[AlertResponse]:
 @router.post("/restore", response_model=RestoreResponse)
 def restore_data(body: RestoreRequest, _: None = Depends(require_admin_write)) -> RestoreResponse:
     restored_from = restore_backup(body.backup_path or None)
-    file_count = len(list(restored_from.glob("*.json")))
+    file_count = int((restored_from / DATABASE_FILENAME).exists())
     return RestoreResponse(
         restored_from=str(restored_from),
         file_count=file_count,

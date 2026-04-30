@@ -43,12 +43,27 @@ Topic: {topic_title}
 Topic description: {topic_description}
 Learner level: {level}
 
+Learning history context:
+{learning_context}
+
 Create today's learning content for this topic.
 Return JSON with this exact schema:
 
 {{
   "theory": "Comprehensive explanation (300-500 words) covering the key concepts",
+  "basic_questions": [
+    "A short foundational knowledge question",
+    "A short foundational knowledge question",
+    "A short foundational knowledge question"
+  ],
   "practice_question": "A specific practical exercise the learner should attempt",
   "reflection_question": "A deeper question to encourage critical thinking"
 }}
+
+Requirements:
+- `basic_questions` must contain exactly 3 concise foundational questions.
+- The 3 foundational questions should check core concepts, terminology, and understanding.
+- `practice_question` must ask the learner to build, write, test, compare, or demonstrate something practical.
+- Adapt the questions to the learning history: reinforce weak concepts when recent work is low-scoring, otherwise progress to the next suitable challenge.
+- Avoid repeating previous questions unless this is a review or consolidation push.
 """

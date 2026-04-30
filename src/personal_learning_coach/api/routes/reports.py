@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 from fastapi import APIRouter
-from fastapi.responses import HTMLResponse
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
 
-@router.get("/{domain}", response_class=HTMLResponse)
-def get_report(domain: str, user_id: str) -> HTMLResponse:
-    from personal_learning_coach.report_generator import render_html
+@router.get("/{domain}")
+def get_report(domain: str, user_id: str) -> dict[str, object]:
+    from personal_learning_coach.report_generator import generate_report_payload
 
-    html = render_html(user_id, domain)
-    return HTMLResponse(content=html)
+    return generate_report_payload(user_id, domain)

@@ -86,6 +86,101 @@
 - 新增 admin 读写 token 分离能力
 - 补充未处理异常记录测试、告警测试与恢复演练测试
 
+### Session 2026-04-28 SQLite migration
+
+已完成：
+- 读取现有 planning 文件并追加 Phase 5
+- 确认当前工作区存在与本任务无关的未提交改动，将限制修改范围
+- 已确认 SQLite 迁移采用标准库 `sqlite3`，目标数据库路径为 `DATA_DIR/personal_learning_coach.sqlite3`
+- 已用测试锁定 SQLite store 自动建库、兼容旧 `_Store("*.json")` 构造、JSON 导入幂等、SQLite 备份文件创建
+- 已将 `data_store.py` 改为 SQLite-backed store
+- 已扩展 `migrations.py`，支持 JSON collection 导入 SQLite
+- 已将 `backup_service.py`、admin route、CLI help 和 README 文案切换到 SQLite
+- 已执行真实迁移，当前 SQLite 数据库包含：2 enrollment、3 plan、33 topic progress、8 push、2 submission、2 evaluation、2 runtime event
+- 已完成验证：`uv run pytest -q` 104 passed，`uv run ruff check .` 通过，`uv run mypy src` 通过
+
+### Session 2026-04-30 frontend learning pages
+
+已完成：
+- 使用 Huashu-Design 的高保真原型思路，把单一控制台拆成四个按学习流程组织的页面
+- 新增学习目标创建页，集中处理报名、目标水平、每日时间、学习风格、推送时间和在线资源偏好
+- 新增问题查看与回答页，独立展示理论、基础题、实践题、复盘题和提交侧栏
+- 新增学习报告页，保留 HTML 报告 iframe 预览和状态同步入口
+- 新增管理与运维页，集中放置生命周期、备份、事件、告警、恢复、删除和结业评估
+- 新增提交答案后的回答质量评估组件，可展示 overall score、next action、evaluation id 与反馈正文
+- 新增 `evaluationView.ts` 和对应单元测试，覆盖分数格式、视觉状态、下一步动作文案和空反馈兜底
+- 已做桌面与 390px 移动端浏览器验证，四个页面切换正常，标签高亮使用 `aria-selected` 驱动
+- 已用浏览器模拟 `/submissions` 响应，确认评估组件能在提交后刷新
+- 已完成验证：`npm run build` 通过，`npm test` 10 passed
+
+### Session 2026-04-30 adaptive question generation
+
+已完成：
+- 读取 `CLAUDE.md`、`task_plan.md`、`findings.md`、`progress.md` 和当前推送/评估/模型代码
+- 确认当前题目生成 prompt 只使用领域、主题、描述和水平，未加载历史答题与整体评价
+- 在 `task_plan.md` 中新增 Phase 7，并记录本轮发现
+- 用测试定义生成题目时应携带历史学习上下文
+- 新增学习上下文构建逻辑，汇总 enrollment、topic progress、submission、evaluation、assessment 和整体进度
+- 将学习上下文接入 LLM 题目生成 prompt，并写入 `PushRecord.content_snapshot.learning_context`
+- 完成代码审查：未发现阻断问题；保持现有 API 返回结构兼容
+
+错误记录：
+- 定向测试首次运行按预期失败：`Learning history context` 未出现在 LLM prompt 中，证明当前生成路径未加载历史上下文。
+- 未重复失败动作；实现上下文注入后同一测试通过。
+
+验证：
+- `uv run pytest tests/test_content_pusher.py::test_push_today_generates_with_learning_history_context -q`：通过
+- `uv run pytest tests/test_content_pusher.py tests/test_api.py -q`：41 passed
+- `uv run pytest -q`：105 passed
+- `uv run ruff check .`：通过
+- `uv run mypy src`：通过
+
+### Session 2026-04-30 structured report preview
+
+已完成：
+- 读取当前报告 API、报告生成器、前端 API client、前端主页面和样式
+- 确认报告页当前用 iframe 渲染后端 HTML，并且需要手动点击报告与状态按钮
+- 确认 Topic Details 数据本身来自最新 topic progress / evaluation，适合改成结构化 JSON 后由前端动态渲染
+- 在 `task_plan.md` 中新增 Phase 8，并记录本轮发现
+- 用测试定义 `/reports/{domain}` 返回结构化 JSON 的新契约
+- 新增 `generate_report_payload(...)` 并将 `/reports/{domain}` 改为 JSON API
+- 新增前端 `reportView.ts` 和测试，由前端渲染 Topic Details、学习进度、洞察和最近评价
+- 将报告页从 iframe/srcdoc 改为 `reportContent` 动态渲染
+- 切换到“学习报告”标签时自动同步报告与领域状态，刷新按钮仅保留为手动补偿
+- 本地验证 Vite 页面可访问，`/reports/ai_agent?user_id=u1` 返回 JSON
+
+错误记录：
+- 定向 API 测试首次按预期失败：`/reports/{domain}` 返回 `text/html`。改为结构化 JSON API 后通过。
+
+验证：
+- `uv run pytest tests/test_api.py::test_get_report -q`：通过
+- `uv run pytest tests/test_api.py::test_get_report tests/test_report_generator.py -q`：7 passed
+- `uv run pytest -q`：105 passed
+- `uv run ruff check .`：通过
+- `uv run mypy src`：通过
+- `npm test -- --run`：13 passed
+- `npm run build`：通过
+
+### Session 2026-04-30 progress sync flag
+
+已完成：
+- 确认当前提交链路会调用 `apply_evaluation(...)`，但没有持久化记录“评价是否已应用到进度”
+- 新增 `EvaluationRecord.progress_applied` flag，默认 `False`
+- 修改 `apply_evaluation(...)`：先保存评价，再重新计算 mastery，更新 topic progress 后标记 `progress_applied=True`
+- 新增 `sync_unapplied_evaluations(...)`，报告生成前自动补偿同步未应用评价
+- 修改 `generate_report(...)`，刷新报告前先同步未应用评价
+- 收紧提交 API 测试，验证提交后 topic progress 和 flag 都已更新
+- 新增报告补偿同步测试，验证未应用评价会在刷新报告时更新 Topic Details
+
+错误记录：
+- 定向测试首次按预期失败：`EvaluationRecord` 没有 `progress_applied` 字段，报告刷新也不会应用未同步评价。
+- 收紧提交测试后发现 `apply_evaluation(...)` 先计算 mastery 再保存 fake evaluation，导致本次分数未参与计算；已改为先保存评价再计算。
+
+验证：
+- `uv run pytest tests/test_api.py::test_submit_answer tests/test_report_generator.py::test_generate_report_payload_syncs_unapplied_evaluations tests/test_models.py::test_evaluation_record_weighted_score -q`：3 passed
+- `uv run pytest -q`：106 passed
+- `uv run ruff check .`：通过
+- `uv run mypy src`：通过
 关键证据：
 - `pytest -q` 结果为：
   - 94 个测试通过

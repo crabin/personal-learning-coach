@@ -1,4 +1,4 @@
-"""Tests for the JSON persistence layer."""
+"""Tests for the SQLite persistence layer."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ def test_save_and_get(tmp_data_dir: Path) -> None:
     profile = UserProfile(name="Bob")
     store = _Store("user_profiles.json", UserProfile)
     store.save(profile)
+    assert (tmp_data_dir / "personal_learning_coach.sqlite3").exists()
     fetched = store.get(profile.user_id)
     assert fetched is not None
     assert fetched.name == "Bob"
@@ -57,6 +58,17 @@ def test_filter_by_field(tmp_data_dir: Path) -> None:
     results = store.filter(user_id="u1")
     assert len(results) == 1
     assert results[0].domain == "ai_agent"
+
+
+def test_filter_by_payload_field_falls_back_to_model_filter(tmp_data_dir: Path) -> None:
+    store = _Store("user_profiles.json", UserProfile)
+    store.save(UserProfile(name="Alice", preferences={"style": "visual"}))
+    store.save(UserProfile(name="Bob", preferences={"style": "text"}))
+
+    results = store.filter(name="Alice")
+
+    assert len(results) == 1
+    assert results[0].preferences == {"style": "visual"}
 
 
 def test_save_overwrites_existing(tmp_data_dir: Path) -> None:
