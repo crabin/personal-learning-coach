@@ -235,6 +235,7 @@ def test_generate_report_payload_syncs_unapplied_evaluations(tmp_data_dir: Path)
 
     assert payload["topic_rows"][0]["status"] == "mastered"
     assert payload["topic_rows"][0]["mastery_score"] == 88.0
+    assert payload["recent_evals"][0]["mastery_estimate"] == 0.0
     saved = data_store.evaluation_records.get(evaluation.eval_id)
     assert saved is not None
     assert saved.progress_applied is True

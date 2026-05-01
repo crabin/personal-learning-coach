@@ -253,6 +253,7 @@ def generate_report_payload(user_id: str, domain: str) -> dict[str, Any]:
             {
                 "evaluated_at": evaluation.evaluated_at.isoformat(),
                 "overall_score": evaluation.overall_score,
+                "mastery_estimate": evaluation.mastery_estimate,
                 "next_action": evaluation.next_action,
                 "feedback": evaluation.llm_feedback,
                 "strengths": evaluation.strengths,

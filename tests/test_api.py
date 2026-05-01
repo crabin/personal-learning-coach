@@ -7,12 +7,14 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from personal_learning_coach.api.main import app
 from personal_learning_coach import data_store
 from personal_learning_coach.models import (
     DomainEnrollment,
     DomainStatus,
+    EvaluationRecord,
     LearnerLevel,
     LearningPlan,
     PushRecord,
@@ -101,6 +103,73 @@ def test_get_domain_status(tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch) 
 def test_get_domain_status_not_found(tmp_data_dir: Path) -> None:
     resp = client.get("/domains/ai_agent/status", params={"user_id": "nobody"})
     assert resp.status_code == 404
+
+
+def test_list_domains_returns_known_domain_options(tmp_data_dir: Path) -> None:
+    data_store.domain_enrollments.save(DomainEnrollment(user_id="u1", domain="model_training"))
+    data_store.learning_plans.save(
+        LearningPlan(user_id="u1", domain="fullstack_development", level=LearnerLevel.BEGINNER)
+    )
+
+    resp = client.get("/domains")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert {"domain": "ai_agent", "label": "AI Agent"} in data
+    assert {"domain": "model_training", "label": "模型训练"} in data
+    assert {"domain": "fullstack_development", "label": "全栈开发"} in data
+
+
+def test_get_domain_summary_returns_real_goal_sidebar_data(tmp_data_dir: Path) -> None:
+    topic1 = TopicNode(title="数据结构", order=0)
+    topic2 = TopicNode(title="算法", order=1)
+    plan = LearningPlan(
+        user_id="u1",
+        domain="ai_agent",
+        level=LearnerLevel.INTERMEDIATE,
+        topics=[topic1, topic2],
+    )
+    data_store.learning_plans.save(plan)
+    enrollment = DomainEnrollment(
+        user_id="u1",
+        domain="ai_agent",
+        level=LearnerLevel.INTERMEDIATE,
+        current_level=LearnerLevel.INTERMEDIATE,
+        target_level=LearnerLevel.ADVANCED,
+        status=DomainStatus.ACTIVE,
+    )
+    data_store.domain_enrollments.save(enrollment)
+    data_store.topic_progress.save(
+        TopicProgress(
+            user_id="u1",
+            topic_id=topic1.topic_id,
+            domain="ai_agent",
+            status=TopicStatus.STUDYING,
+            mastery_score=84,
+        )
+    )
+    data_store.topic_progress.save(
+        TopicProgress(
+            user_id="u1",
+            topic_id=topic2.topic_id,
+            domain="ai_agent",
+            status=TopicStatus.READY,
+            mastery_score=62,
+        )
+    )
+
+    resp = client.get("/domains/ai_agent/summary", params={"user_id": "u1"})
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["domain"] == "ai_agent"
+    assert data["mastery_percent"] == 0
+    assert data["active_topic_title"] == "数据结构"
+    assert data["active_topic_id"] == topic1.topic_id
+    assert data["topic_progress"] == [
+        {"title": "数据结构", "mastery_percent": 84},
+        {"title": "算法", "mastery_percent": 62},
+    ]
 
 
 def test_pause_domain(tmp_data_dir: Path) -> None:
@@ -228,7 +297,10 @@ def test_trigger_push_returns_generated_question_content(
         theory="Theory body",
         practice_question="Practice prompt?",
         reflection_question="Reflection prompt?",
-        content_snapshot={"basic_questions": ["Q1?", "Q2?", "Q3?"]},
+        content_snapshot={
+            "basic_questions": ["Q1?", "Q2?", "Q3?"],
+            "visual_url": "data/images/agent.png",
+        },
     )
     monkeypatch.setattr(content_pusher, "push_today", lambda **_: fake_push)
 
@@ -241,6 +313,61 @@ def test_trigger_push_returns_generated_question_content(
     assert data["basic_questions"] == ["Q1?", "Q2?", "Q3?"]
     assert data["practice_question"] == "Practice prompt?"
     assert data["reflection_question"] == "Reflection prompt?"
+    assert data["visual_url"] == "/data/images/agent.png"
+
+
+def test_trigger_push_falls_back_to_local_learning_visual(
+    tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from personal_learning_coach import content_pusher
+    from personal_learning_coach.models import PushRecord
+
+    image_path = tmp_data_dir / "images" / "fallback.png"
+    image_path.parent.mkdir(parents=True, exist_ok=True)
+    image_path.write_bytes(b"fallback-image")
+
+    fake_push = PushRecord(
+        user_id="u1",
+        topic_id="topic-2",
+        domain="ai_agent",
+        push_type="new_topic",
+        theory="Theory body",
+        practice_question="Practice prompt?",
+        reflection_question="Reflection prompt?",
+        content_snapshot={"basic_questions": ["Q1?", "Q2?", "Q3?"]},
+    )
+    monkeypatch.setattr(content_pusher, "push_today", lambda **_: fake_push)
+
+    resp = client.post("/schedules/trigger", json={"user_id": "u1", "domain": "ai_agent"})
+
+    assert resp.status_code == 200
+    assert resp.json()["visual_url"] == "/data/images/fallback.png"
+
+
+def test_data_images_route_serves_learning_visual(tmp_data_dir: Path) -> None:
+    image_path = tmp_data_dir / "images" / "lesson.png"
+    image_path.parent.mkdir(parents=True, exist_ok=True)
+    image_path.write_bytes(b"fake-image")
+
+    resp = client.get("/data/images/lesson.png")
+
+    assert resp.status_code == 200
+    assert resp.content == b"fake-image"
+    assert resp.headers["cache-control"] == "public, max-age=86400, stale-while-revalidate=604800"
+
+
+def test_data_images_route_can_serve_preview_variant(tmp_data_dir: Path) -> None:
+    image_path = tmp_data_dir / "images" / "large.png"
+    image_path.parent.mkdir(parents=True, exist_ok=True)
+    with Image.effect_noise((2400, 1400), 120).convert("RGB") as image:
+        image.save(image_path, format="PNG")
+
+    original_size = image_path.stat().st_size
+    resp = client.get("/data/images/large.png", params={"variant": "preview"})
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "image/webp"
+    assert len(resp.content) < original_size
 
 
 def test_get_report(tmp_data_dir: Path) -> None:
@@ -258,6 +385,17 @@ def test_get_report(tmp_data_dir: Path) -> None:
         attempts=2,
     )
     data_store.topic_progress.save(progress)
+    data_store.evaluation_records.save(
+        EvaluationRecord(
+            submission_id="s1",
+            user_id="u1",
+            topic_id=topic.topic_id,
+            domain="ai_agent",
+            overall_score=86.0,
+            mastery_estimate=0.86,
+            progress_applied=True,
+        )
+    )
 
     resp = client.get("/reports/ai_agent", params={"user_id": "u1"})
 
@@ -270,6 +408,7 @@ def test_get_report(tmp_data_dir: Path) -> None:
     assert data["topic_rows"][0]["title"] == "Prompt Debugging"
     assert data["topic_rows"][0]["status"] == "mastered"
     assert data["topic_rows"][0]["mastery_score"] == 86.0
+    assert data["recent_evals"][0]["mastery_estimate"] == 0.86
 
 
 def test_submit_answer(tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Daily Q&amp;A | Learning Coach</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Manrope:wght@500;600;700;800&amp;family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-variant": "#e1e2ed",
+                        "surface-container-highest": "#e1e2ed",
+                        "primary-fixed": "#dbe1ff",
+                        "surface-bright": "#faf8ff",
+                        "on-primary-fixed-variant": "#003ea8",
+                        "on-tertiary-fixed-variant": "#7d2d00",
+                        "outline": "#737686",
+                        "on-secondary-fixed": "#25005a",
+                        "primary-container": "#2563eb",
+                        "tertiary-fixed-dim": "#ffb596",
+                        "on-error": "#ffffff",
+                        "on-secondary-fixed-variant": "#5a00c6",
+                        "border-danger": "#FECACA",
+                        "primary": "#004ac6",
+                        "on-surface": "#191b23",
+                        "tertiary-container": "#bc4800",
+                        "on-primary": "#ffffff",
+                        "inverse-primary": "#b4c5ff",
+                        "on-primary-container": "#eeefff",
+                        "on-tertiary": "#ffffff",
+                        "surface-container": "#ededf9",
+                        "on-primary-fixed": "#00174b",
+                        "surface-container-low": "#f3f3fe",
+                        "secondary-container": "#8a4cfc",
+                        "on-tertiary-fixed": "#360f00",
+                        "on-surface-variant": "#434655",
+                        "background": "#faf8ff",
+                        "outline-variant": "#c3c6d7",
+                        "surface-dim": "#d9d9e5",
+                        "on-tertiary-container": "#ffede6",
+                        "error-container": "#ffdad6",
+                        "secondary": "#712ae2",
+                        "error": "#ba1a1a",
+                        "on-secondary-container": "#fffbff",
+                        "tertiary-fixed": "#ffdbcd",
+                        "surface-console": "#1E293B",
+                        "on-error-container": "#93000a",
+                        "inverse-surface": "#2e3039",
+                        "tertiary": "#943700",
+                        "secondary-fixed-dim": "#d2bbff",
+                        "surface-container-lowest": "#ffffff",
+                        "inverse-on-surface": "#f0f0fb",
+                        "secondary-fixed": "#eaddff",
+                        "on-background": "#191b23",
+                        "status-info": "#3B82F6",
+                        "status-warning": "#F59E0B",
+                        "status-success": "#10B981",
+                        "status-error": "#EF4444",
+                        "primary-fixed-dim": "#b4c5ff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "stack-lg": "2rem",
+                        "stack-md": "1rem",
+                        "stack-sm": "0.5rem",
+                        "margin-page": "2rem",
+                        "container-max": "1280px",
+                        "gutter": "1.5rem"
+                    },
+                    "fontFamily": {
+                        "console-text": ["Space Grotesk"],
+                        "headline-md": ["Manrope"],
+                        "mono-label": ["Space Grotesk"],
+                        "headline-xl": ["Manrope"],
+                        "body-sm": ["Inter"],
+                        "body-base": ["Inter"]
+                    },
+                    "fontSize": {
+                        "console-text": ["13px", {"lineHeight": "18px", "fontWeight": "400"}],
+                        "headline-md": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                        "mono-label": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                        "headline-xl": ["32px", {"lineHeight": "40px", "fontWeight": "700"}],
+                        "body-sm": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "body-base": ["16px", {"lineHeight": "24px", "fontWeight": "400"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body { font-family: 'Inter', sans-serif; }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #1e293b; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; border-radius: 10px; }
+    </style>
+</head>
+<body class="bg-background text-on-surface">
+<!-- Updated TopAppBar following Screen_11 style -->
+<header class="sticky top-0 w-full z-50 bg-white border-b border-slate-200 shadow-none">
+<div class="max-w-[1280px] mx-auto flex justify-between items-center px-6 py-3">
+<div class="flex items-center gap-8">
+<h1 class="text-lg font-black tracking-tighter text-slate-900">Learning Coach</h1>
+<nav class="hidden md:flex items-center gap-1">
+<a class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-outline hover:bg-surface-container hover:text-on-surface font-mono-label text-xs uppercase transition-colors" href="#">
+<span class="material-symbols-outlined text-[18px]">track_changes</span>
+                        Goals
+                    </a>
+<a class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary-fixed/30 text-primary font-mono-label text-xs uppercase font-bold" href="#">
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">forum</span>
+                        Q&amp;A
+                    </a>
+<a class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-outline hover:bg-surface-container hover:text-on-surface font-mono-label text-xs uppercase transition-colors" href="#">
+<span class="material-symbols-outlined text-[18px]">query_stats</span>
+                        Progress
+                    </a>
+<a class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-outline hover:bg-surface-container hover:text-on-surface font-mono-label text-xs uppercase transition-colors" href="#">
+<span class="material-symbols-outlined text-[18px]">settings_system_daydream</span>
+                        System
+                    </a>
+</nav>
+</div>
+<!-- Global Config Area -->
+<div class="flex items-center gap-4 bg-surface-container-low px-4 py-1.5 rounded-xl border border-outline-variant">
+<div class="flex flex-col">
+<span class="font-mono-label text-[10px] text-outline uppercase">API URL</span>
+<input class="bg-transparent border-none p-0 text-body-sm focus:ring-0 w-40 text-primary" type="text" value="https://api.learningcoach.io/v1"/>
+</div>
+<div class="h-8 w-px bg-outline-variant"></div>
+<div class="flex flex-col">
+<span class="font-mono-label text-[10px] text-outline uppercase">Domain</span>
+<input class="bg-transparent border-none p-0 text-body-sm focus:ring-0 w-32 text-on-surface" type="text" value="Computer Science"/>
+</div>
+<div class="flex gap-2 ml-2">
+<button class="material-symbols-outlined text-outline hover:text-primary transition-colors">settings</button>
+<button class="material-symbols-outlined text-outline hover:text-primary transition-colors">account_circle</button>
+</div>
+</div>
+</div>
+</header>
+<!-- Main Content Wrapper -->
+<main class="pb-[240px]">
+<div class="max-w-[1280px] mx-auto px-margin-page py-8">
+<!-- Page Header Actions -->
+<div class="flex justify-between items-end mb-stack-lg">
+<div>
+<h1 class="font-headline-xl text-headline-xl text-on-surface mb-2">Daily Learning Workbench</h1>
+<p class="font-body-base text-on-surface-variant max-w-2xl">Structured progress through theory, verification, and critical reflection. Your daily cognitive workout.</p>
+</div>
+<div class="flex gap-4">
+<button class="px-6 py-2.5 bg-surface-container-high text-primary font-semibold text-sm rounded-lg flex items-center gap-2 hover:bg-surface-container-highest transition-colors border border-outline-variant">
+<span class="material-symbols-outlined text-lg" data-icon="refresh">refresh</span>
+                        Fetch Today's Question
+                    </button>
+<button class="px-8 py-2.5 bg-primary text-on-primary font-semibold text-sm rounded-lg flex items-center gap-2 hover:opacity-90 shadow-lg shadow-primary/20 transition-opacity">
+<span class="material-symbols-outlined text-lg" data-icon="send">send</span>
+                        Submit &amp; Evaluate
+                    </button>
+</div>
+</div>
+<!-- Bento Grid Layout -->
+<div class="grid grid-cols-12 gap-gutter">
+<!-- Lesson Theory Section (Left 8 cols) -->
+<section class="col-span-12 lg:col-span-8 space-y-gutter">
+<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-8 overflow-hidden relative">
+<div class="absolute top-0 right-0 w-32 h-32 opacity-5 translate-x-8 -translate-y-8">
+<span class="material-symbols-outlined text-[120px]" data-icon="menu_book">menu_book</span>
+</div>
+<div class="font-mono-label text-primary uppercase mb-4">Topic: Systems Architecture / Microservices</div>
+<h2 class="font-headline-md text-headline-md mb-6">Lesson Theory: Eventual Consistency Patterns</h2>
+<div class="font-body-base text-on-surface-variant space-y-4 leading-relaxed">
+<p>Eventual consistency is a consistency model used in distributed computing that informally guarantees that, if no new updates are made to a given data item, eventually all accesses to that item will return the last updated value.</p>
+<p>In highly available systems like Amazon S3 or DNS, immediate consistency is often sacrificed for availability and partition tolerance (as per the CAP Theorem). This lesson focuses on <strong>Conflict-free Replicated Data Types (CRDTs)</strong> and how they enable seamless merging of divergent states across nodes.</p>
+<div class="bg-surface-container p-4 rounded-lg border-l-4 border-primary">
+<span class="font-bold text-on-surface">Key Concept:</span> Deterministic merging ensures that regardless of the order of updates, the final state is identical across all healthy replicas.
+                            </div>
+</div>
+<img alt="Technical diagram" class="mt-8 rounded-xl w-full h-48 object-cover border border-outline-variant" data-alt="A clean, minimalist technical diagram showing three distributed nodes exchanging data packets in a synchronized manner. The nodes are represented as glowing blue spheres connected by thin, sharp light lines against a pristine white background. Small, floating data icons move along the lines, illustrating high-speed communication. The overall aesthetic is professional, architectural, and highly structured with a dominant corporate blue and white color palette." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAtX6EL1HvuUeUgqIY1ufakD74HXnFSiAFf6suBH-xqLxam6yM5JZrTiMOgg5lpkiVxhpC-xjSFFZ2ZJSBI9sQQGu2ie-mhmuD3xcuAkrUR8KIzrBcgMGTX0iVzrEwgliPixANDFhEke-NBZILMB83TWYW1FVriaeIyKJUqzaQwA_st9y1jRWrAsHLZ8Om-3y1-D7BLsKVjc1QLSTT4BRRGFbGiHSeazwZyU1va6efPNx_4PA1WdSuZrYUtum7pRyAgwkX6aHi-eFI"/>
+</div>
+<!-- Input Area -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-8">
+<h3 class="font-headline-md mb-6 flex items-center gap-2">
+<span class="material-symbols-outlined text-primary" data-icon="edit_note">edit_note</span>
+                            Workbench Input Area
+                        </h3>
+<div class="grid grid-cols-2 gap-4 mb-8">
+<div>
+<label class="font-mono-label text-slate-500 uppercase block mb-1">Push ID (Auto-generated)</label>
+<input class="w-full bg-slate-100 border-outline-variant text-slate-500 rounded p-2 text-sm font-mono-label" readonly="" type="text" value="PUSH-20231027-X92"/>
+</div>
+<div>
+<label class="font-mono-label text-slate-500 uppercase block mb-1">Session Token</label>
+<div class="flex gap-2">
+<input class="flex-1 bg-white border-outline-variant rounded p-2 text-sm" type="password" value="••••••••••••"/>
+<button class="bg-surface-container px-3 rounded hover:bg-slate-200 transition-colors">
+<span class="material-symbols-outlined text-sm" data-icon="visibility">visibility</span>
+</button>
+</div>
+</div>
+</div>
+<div class="space-y-6">
+<div class="grid grid-cols-1 gap-6">
+<div>
+<label class="font-body-sm font-semibold mb-2 block">1. Define the relationship between CRDTs and eventual consistency.</label>
+<textarea class="w-full border-outline-variant focus:ring-primary focus:border-primary rounded-lg text-sm" placeholder="Enter your response..." rows="2"></textarea>
+</div>
+<div>
+<label class="font-body-sm font-semibold mb-2 block">2. Why does DNS favor eventual consistency over strong consistency?</label>
+<textarea class="w-full border-outline-variant focus:ring-primary focus:border-primary rounded-lg text-sm" placeholder="Enter your response..." rows="2"></textarea>
+</div>
+<div>
+<label class="font-body-sm font-semibold mb-2 block">3. Name two common conflict resolution strategies in distributed systems.</label>
+<textarea class="w-full border-outline-variant focus:ring-primary focus:border-primary rounded-lg text-sm" placeholder="Enter your response..." rows="2"></textarea>
+</div>
+</div>
+<hr class="border-outline-variant"/>
+<div class="bg-primary-fixed/30 p-6 rounded-xl">
+<div class="flex items-center gap-2 mb-4">
+<span class="material-symbols-outlined text-primary" data-icon="code_blocks">code_blocks</span>
+<span class="font-headline-md text-primary">Practice: Implementation Summary</span>
+</div>
+<label class="font-body-sm font-semibold mb-2 block text-on-primary-fixed-variant">Describe how you would implement a 'Last-Write-Wins' Register in a shared environment.</label>
+<textarea class="w-full border-outline-variant focus:ring-primary focus:border-primary rounded-lg text-sm font-mono" placeholder="Draft your implementation logic or pseudo-code here..." rows="4"></textarea>
+</div>
+<div class="bg-secondary-fixed/30 p-6 rounded-xl">
+<div class="flex items-center gap-2 mb-4 text-on-secondary-fixed-variant">
+<span class="material-symbols-outlined" data-icon="psychology">psychology</span>
+<span class="font-headline-md">Reflection</span>
+</div>
+<label class="font-body-sm font-semibold mb-2 block text-on-secondary-fixed-variant">How does understanding consistency models change your approach to designing system reliability?</label>
+<textarea class="w-full border-outline-variant focus:ring-primary focus:border-primary rounded-lg text-sm" placeholder="Critical reflection on today's learning..." rows="3"></textarea>
+</div>
+</div>
+</div>
+</section>
+<!-- Evaluation & Metadata (Right 4 cols) -->
+<aside class="col-span-12 lg:col-span-4 space-y-gutter">
+<!-- Score Card -->
+<div class="bg-white border border-outline-variant rounded-xl p-6 shadow-sm">
+<div class="flex justify-between items-start mb-6">
+<div>
+<h3 class="font-headline-md">Session Status</h3>
+<p class="text-xs font-mono-label text-slate-500">PENDING EVALUATION</p>
+</div>
+<span class="bg-status-warning/10 text-status-warning px-3 py-1 rounded-full text-[10px] font-bold">IN PROGRESS</span>
+</div>
+<div class="flex flex-col items-center py-6">
+<div class="relative flex items-center justify-center w-32 h-32 mb-4">
+<svg class="w-full h-full transform -rotate-90">
+<circle class="text-slate-100" cx="64" cy="64" fill="transparent" r="58" stroke="currentColor" stroke-width="8"></circle>
+<circle class="text-primary" cx="64" cy="64" fill="transparent" r="58" stroke="currentColor" stroke-dasharray="364.4" stroke-dashoffset="109.3" stroke-width="8"></circle>
+</svg>
+<span class="absolute text-3xl font-black text-on-surface">70%</span>
+</div>
+<p class="text-sm font-semibold text-on-surface-variant">Predicted Performance</p>
+</div>
+<div class="space-y-4">
+<div class="bg-surface-container-low p-4 rounded-lg">
+<div class="text-[10px] font-mono-label text-slate-400 uppercase mb-2">Next Action Recommended</div>
+<div class="flex items-center gap-2 text-primary">
+<span class="material-symbols-outlined text-lg" data-icon="trending_up">trending_up</span>
+<span class="font-bold">CONSOLIDATE</span>
+</div>
+</div>
+<div class="p-4 border border-outline-variant rounded-lg">
+<div class="text-[10px] font-mono-label text-slate-400 uppercase mb-2">Feedback Summary</div>
+<p class="text-xs text-on-surface-variant leading-relaxed">System predicts a strong grasp of CRDT concepts but suggests deeper review on clock synchronization mechanisms.</p>
+</div>
+</div>
+</div>
+<!-- Parsing Notes / AI Console -->
+<div class="bg-surface-console text-text-console rounded-xl p-6 shadow-2xl overflow-hidden relative">
+<div class="absolute top-2 right-2 text-[10px] font-mono text-slate-500">DEBUG_MODE</div>
+<h4 class="font-mono-label text-[11px] text-blue-400 uppercase mb-4 tracking-widest flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></span>
+                            Parsing Engine Notes
+                        </h4>
+<div class="font-console-text text-console-text space-y-3 opacity-80">
+<p>&gt; Initializing validator v2.4.0...</p>
+<p>&gt; Parsing Question_1 (Basic): OK</p>
+<p>&gt; Parsing Question_2 (Basic): OK</p>
+<p>&gt; Parsing Question_3 (Basic): WARN (Incomplete)</p>
+<p>&gt; Parsing Practice (Applied): OK</p>
+<p>&gt; Calculating entropy shift...</p>
+<p class="text-blue-300">&gt; Vector similarity: 0.8422</p>
+</div>
+</div>
+<!-- Topic Mastery -->
+<div class="bg-white border border-outline-variant rounded-xl p-6">
+<h4 class="font-headline-md text-sm mb-4">Domain Mastery</h4>
+<div class="space-y-4">
+<div class="flex justify-between items-center">
+<span class="text-xs font-medium">Distributed Systems</span>
+<span class="bg-green-100 text-green-700 text-[10px] font-bold px-2 py-0.5 rounded uppercase">Level 4</span>
+</div>
+<div class="w-full bg-slate-100 h-1 rounded-full">
+<div class="bg-status-success h-full rounded-full" style="width: 85%"></div>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-xs font-medium">Network Protocols</span>
+<span class="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded uppercase">Level 2</span>
+</div>
+<div class="w-full bg-slate-100 h-1 rounded-full">
+<div class="bg-primary h-full rounded-full" style="width: 42%"></div>
+</div>
+</div>
+</div>
+</aside>
+</div>
+</div>
+</main>
+<!-- Footer / Console Tray -->
+<footer class="fixed bottom-0 left-0 w-full z-40 flex flex-col px-4 py-3 bg-slate-900 dark:bg-black border-t border-slate-700 shadow-2xl h-[200px] transition-all">
+<div class="flex justify-between items-center mb-2 border-b border-slate-800 pb-2">
+<div class="flex items-center gap-4">
+<span class="text-blue-400 font-mono text-[11px] flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px]" data-icon="terminal">terminal</span>
+                    System Console
+                </span>
+<span class="text-slate-500 font-mono text-[11px]">API Status: <span class="text-green-500">Active</span></span>
+</div>
+<div class="flex gap-4">
+<a class="font-mono text-[11px] text-slate-400 hover:text-blue-300 transition-colors" href="#">View Request Logs</a>
+<a class="font-mono text-[11px] text-slate-400 hover:text-blue-300 transition-colors" href="#">JSON Export</a>
+<a class="font-mono text-[11px] text-slate-400 hover:text-blue-300 transition-colors" href="#">Environment Config</a>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto custom-scrollbar font-mono text-[11px] text-slate-400 leading-relaxed py-2 space-y-1">
+<div class="flex gap-4">
+<span class="text-slate-600">[14:22:01]</span>
+<span class="text-blue-500">AUTH:</span>
+<span>Session validated for user coach_admin_01.</span>
+</div>
+<div class="flex gap-4">
+<span class="text-slate-600">[14:22:05]</span>
+<span class="text-green-500">GET:</span>
+<span>/api/v1/daily_push?id=PUSH-20231027-X92 [200 OK]</span>
+</div>
+<div class="flex gap-4">
+<span class="text-slate-600">[14:22:05]</span>
+<span class="text-slate-500">PROC:</span>
+<span>Rendering template for domain: SYSTEMS_ARCHITECTURE.</span>
+</div>
+<div class="flex gap-4">
+<span class="text-slate-600">[14:24:12]</span>
+<span class="text-yellow-500">POST:</span>
+<span>/api/v1/autosave... success. Payload size: 4.2kb</span>
+</div>
+<div class="flex gap-4">
+<span class="text-slate-600">[14:25:33]</span>
+<span class="text-slate-500">INFO:</span>
+<span>User started typing in section: Practice_Implementation.</span>
+</div>
+</div>
+<div class="mt-2 text-right">
+<span class="font-mono text-[10px] text-slate-600 uppercase">System Console | API Status: Active</span>
+</div>
+</footer>
+</body></html>

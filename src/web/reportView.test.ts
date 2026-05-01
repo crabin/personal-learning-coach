@@ -48,11 +48,11 @@ describe("report view", () => {
   it("renders dynamic topic details from the report payload", () => {
     const html = renderReport(report());
 
-    expect(html).toContain("Topic Details");
+    expect(html).toContain("主题明细");
     expect(html).toContain("Prompt Debugging");
-    expect(html).toContain("mastered");
+    expect(html).toContain("已掌握");
     expect(html).toContain("86");
-    expect(html).toContain("领域状态：active");
+    expect(html).toContain("领域状态：活跃");
   });
 
   it("escapes backend-provided report text before inserting HTML", () => {

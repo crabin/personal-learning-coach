@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import APIRouter
 from pydantic import BaseModel
+
+from personal_learning_coach.config import load_config
 
 router = APIRouter(prefix="/schedules", tags=["schedules"])
 
@@ -23,6 +27,7 @@ class TriggerResponse(BaseModel):
     basic_questions: list[str] = []
     practice_question: str = ""
     reflection_question: str = ""
+    visual_url: str = ""
 
 
 @router.post("/trigger", response_model=TriggerResponse)
@@ -46,4 +51,54 @@ def trigger_push(body: TriggerRequest) -> TriggerResponse:
         ],
         practice_question=push.practice_question,
         reflection_question=push.reflection_question,
+        visual_url=_extract_visual_url(push),
     )
+
+
+def _extract_visual_url(push) -> str:
+    for snapshot in (push.content_snapshot, push.resource_snapshot):
+        if not isinstance(snapshot, dict):
+            continue
+        for key in ("visual_url", "image_url", "cover_image_url"):
+            value = snapshot.get(key)
+            if isinstance(value, str) and value.strip():
+                return _normalize_visual_url(value)
+        for key in ("visual", "image", "cover_image"):
+            nested = snapshot.get(key)
+            if not isinstance(nested, dict):
+                continue
+            value = nested.get("url")
+            if isinstance(value, str) and value.strip():
+                return _normalize_visual_url(value)
+    return _fallback_visual_url(push)
+
+
+def _normalize_visual_url(value: str) -> str:
+    normalized = value.strip().replace("\\", "/")
+    if not normalized:
+        return ""
+    if normalized.startswith(("http://", "https://", "/data/images/")):
+        return normalized
+    if normalized.startswith("./data/images/"):
+        return f"/{normalized[2:]}"
+    if normalized.startswith("data/images/"):
+        return f"/{normalized}"
+    if normalized.startswith("images/"):
+        return f"/data/{normalized}"
+    return normalized
+
+
+def _fallback_visual_url(push) -> str:
+    images_dir = load_config().data_dir / "images"
+    candidates = sorted(
+        path
+        for path in images_dir.iterdir()
+        if path.is_file() and path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}
+    ) if images_dir.exists() else []
+    if not candidates:
+        return ""
+
+    seed = (push.topic_id or push.push_id or push.domain).encode("utf-8")
+    index = sum(seed) % len(candidates)
+    relative = candidates[index].relative_to(images_dir).as_posix()
+    return f"/data/images/{relative}"

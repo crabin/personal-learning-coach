@@ -17,6 +17,7 @@ export interface ReportTopicRow {
 export interface ReportEvaluation {
   evaluated_at: string;
   overall_score: number;
+  mastery_estimate?: number;
   next_action: string;
   feedback: string;
 }
@@ -44,7 +45,7 @@ export function renderReport(data: ReportPayload): string {
     <section class="report-board" aria-live="polite">
       <div class="report-status-row">
         <div>
-          <span class="eyebrow">Report</span>
+          <span class="eyebrow">报告</span>
           <h3>${escapeHtml(data.domain)} / ${escapeHtml(data.user_id)}</h3>
         </div>
         <span class="report-status">${statusLabel(data.enrollment_status)}</span>
@@ -57,7 +58,7 @@ export function renderReport(data: ReportPayload): string {
       </div>
       <section class="report-section">
         <div class="surface-heading compact-heading">
-          <h3>Topic Details</h3>
+          <h3>主题明细</h3>
           <span class="report-generated">更新于 ${formatDate(data.generated_at)}</span>
         </div>
         ${renderTopicTable(data.topic_rows)}
@@ -73,7 +74,7 @@ export function renderReport(data: ReportPayload): string {
         </div>
       </section>
       <section class="report-section">
-        <h3>Recent Evaluations</h3>
+        <h3>近期评估</h3>
         ${renderEvaluations(data.recent_evals)}
       </section>
     </section>
@@ -94,11 +95,11 @@ function renderTopicTable(rows: ReportTopicRow[]): string {
         <thead>
           <tr>
             <th>#</th>
-            <th>Topic</th>
-            <th>Status</th>
-            <th>Mastery</th>
-            <th>Avg Score</th>
-            <th>Attempts</th>
+            <th>主题</th>
+            <th>状态</th>
+            <th>掌握度</th>
+            <th>平均分</th>
+            <th>尝试次数</th>
           </tr>
         </thead>
         <tbody>
@@ -108,7 +109,7 @@ function renderTopicTable(rows: ReportTopicRow[]): string {
                 <tr>
                   <td>${index + 1}</td>
                   <td>${escapeHtml(row.title)}</td>
-                  <td><span class="topic-status" data-status="${escapeHtml(row.status)}">${escapeHtml(row.status)}</span></td>
+                  <td><span class="topic-status" data-status="${escapeHtml(row.status)}">${topicStatusLabel(row.status)}</span></td>
                   <td>${formatNumber(row.mastery_score)}</td>
                   <td>${row.avg_score === null ? "--" : formatNumber(row.avg_score)}</td>
                   <td>${row.attempts}</td>
@@ -133,7 +134,7 @@ function renderEvaluations(evaluations: ReportEvaluation[]): string {
           (evaluation) => `
             <article class="evaluation-item">
               <strong>${formatNumber(evaluation.overall_score)} / 100</strong>
-              <span>${escapeHtml(evaluation.next_action || "continue")} · ${formatDate(evaluation.evaluated_at)}</span>
+              <span>${nextActionLabel(evaluation.next_action)} · ${formatDate(evaluation.evaluated_at)}</span>
               <p>${escapeHtml(evaluation.feedback || "系统暂未返回详细反馈。")}</p>
             </article>
           `,
@@ -166,7 +167,42 @@ function listText(items: string[]): string {
 }
 
 function statusLabel(status: string | null): string {
-  return status ? `领域状态：${status}` : "领域状态：未创建";
+  return status ? `领域状态：${domainStatusLabel(status)}` : "领域状态：未创建";
+}
+
+function domainStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    active: "活跃",
+    paused: "已暂停",
+    archived: "已归档",
+    awaiting_submission: "等待提交",
+    final_assessment_due: "待结业评估",
+    completed: "已完成",
+  };
+  return labels[status] ?? status;
+}
+
+function topicStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    ready: "待学习",
+    pushed: "已推送",
+    studying: "学习中",
+    submitted: "已提交",
+    mastered: "已掌握",
+    review_due: "待复习",
+    completed: "已完成",
+  };
+  return labels[status] ?? status;
+}
+
+function nextActionLabel(nextAction: string): string {
+  const labels: Record<string, string> = {
+    continue: "继续推进",
+    consolidate: "巩固后推进",
+    review: "进入复习",
+    final_test: "准备结业评估",
+  };
+  return labels[nextAction] ?? (nextAction || "等待建议");
 }
 
 function formatNumber(value: number): string {

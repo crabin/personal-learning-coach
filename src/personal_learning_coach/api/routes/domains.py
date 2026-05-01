@@ -9,8 +9,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from personal_learning_coach import data_store
-from personal_learning_coach.models import DomainEnrollment, DomainStatus, LearnerLevel
-from personal_learning_coach.review_engine import WeeklySummary
+from personal_learning_coach.models import DomainEnrollment, DomainStatus, LearnerLevel, TopicStatus
+from personal_learning_coach.review_engine import WeeklySummary, generate_weekly_summary, select_active_plan
 
 router = APIRouter(prefix="/domains", tags=["domains"])
 
@@ -90,6 +90,29 @@ class DomainStatusResponse(BaseModel):
     avg_score: float
 
 
+class DomainSummaryTopic(BaseModel):
+    title: str
+    mastery_percent: int
+
+
+class DomainSummaryResponse(BaseModel):
+    domain: str
+    user_id: str
+    status: str
+    current_level: str
+    target_level: str
+    mastery_percent: int
+    avg_score: float
+    active_topic_title: str
+    active_topic_id: str
+    topic_progress: list[DomainSummaryTopic] = Field(default_factory=list)
+
+
+class DomainOptionResponse(BaseModel):
+    domain: str
+    label: str
+
+
 class DomainLifecycleRequest(BaseModel):
     user_id: str
 
@@ -159,6 +182,16 @@ def _delete_records_for_domain(user_id: str, domain: str) -> None:
             store.delete(record_id)
 
 
+@router.get("", response_model=list[DomainOptionResponse])
+def list_domains() -> list[DomainOptionResponse]:
+    seen_domains = {
+        *(enrollment.domain for enrollment in data_store.domain_enrollments.all()),
+        *(plan.domain for plan in data_store.learning_plans.all()),
+    }
+    domains = sorted({*seen_domains, "ai_agent"})
+    return [DomainOptionResponse(domain=domain, label=_domain_label(domain)) for domain in domains]
+
+
 @router.get("/{domain}/status", response_model=DomainStatusResponse)
 def get_domain_status(domain: str, user_id: str) -> DomainStatusResponse:
     from personal_learning_coach.review_engine import generate_weekly_summary
@@ -175,6 +208,44 @@ def get_domain_status(domain: str, user_id: str) -> DomainStatusResponse:
         mastered_topics=summary["mastered_topics"],
         review_due_topics=summary["review_due_topics"],
         avg_score=summary["avg_score"],
+    )
+
+
+@router.get("/{domain}/summary", response_model=DomainSummaryResponse)
+def get_domain_summary(domain: str, user_id: str) -> DomainSummaryResponse:
+    summary: WeeklySummary = generate_weekly_summary(user_id, domain)
+    enrollment_list: list[DomainEnrollment] = data_store.domain_enrollments.filter(user_id=user_id, domain=domain)
+    enrollment = enrollment_list[0] if enrollment_list else None
+    active_plan = select_active_plan(user_id, domain)
+    ordered_topics = active_plan.topics if active_plan else []
+    topic_titles = {topic.topic_id: topic.title for topic in ordered_topics}
+    progress_by_topic = {
+        progress.topic_id: progress
+        for progress in data_store.topic_progress.filter(user_id=user_id, domain=domain)
+    }
+    summary_by_topic = {item["topic_id"]: item for item in summary["topic_summaries"]}
+
+    topic_progress = [
+        DomainSummaryTopic(
+            title=topic.title,
+            mastery_percent=_topic_mastery_percent(topic.topic_id, summary_by_topic, progress_by_topic),
+        )
+        for topic in ordered_topics[:3]
+    ]
+    active_topic = _select_active_topic(ordered_topics, progress_by_topic)
+
+    default_level = LearnerLevel.BEGINNER.value
+    return DomainSummaryResponse(
+        domain=domain,
+        user_id=user_id,
+        status=enrollment.status.value if enrollment else DomainStatus.NOT_STARTED.value,
+        current_level=(enrollment.current_level or enrollment.level).value if enrollment else default_level,
+        target_level=(enrollment.target_level or enrollment.level).value if enrollment else default_level,
+        mastery_percent=round(summary["mastery_rate"] * 100),
+        avg_score=summary["avg_score"],
+        active_topic_title=active_topic.title if active_topic else domain,
+        active_topic_id=active_topic.topic_id if active_topic else "",
+        topic_progress=topic_progress,
     )
 
 
@@ -215,6 +286,49 @@ def archive_domain(domain: str, body: DomainLifecycleRequest) -> DomainLifecycle
         status=enrollment.status.value,
         message="Domain archived.",
     )
+
+
+def _topic_mastery_percent(
+    topic_id: str,
+    summary_by_topic: dict[str, Any],
+    progress_by_topic: dict[str, Any],
+) -> int:
+    if topic_id in summary_by_topic:
+        return round(float(summary_by_topic[topic_id]["mastery_score"]))
+    progress = progress_by_topic.get(topic_id)
+    if progress is None:
+        return 0
+    return round(float(progress.mastery_score))
+
+
+def _select_active_topic(topics: list[Any], progress_by_topic: dict[str, Any]) -> Any | None:
+    active_statuses = {
+        TopicStatus.PUSHED.value,
+        TopicStatus.STUDYING.value,
+        TopicStatus.SUBMITTED.value,
+        TopicStatus.EVALUATED.value,
+        TopicStatus.REVIEW_DUE.value,
+        TopicStatus.READY.value,
+        TopicStatus.MASTERED.value,
+    }
+    for topic in topics:
+        progress = progress_by_topic.get(topic.topic_id)
+        if progress and progress.status.value in active_statuses:
+            return topic
+    return topics[0] if topics else None
+
+
+def _domain_label(domain: str) -> str:
+    predefined = {
+        "ai_agent": "AI Agent",
+        "fullstack_development": "全栈开发",
+        "model_training": "模型训练",
+        "data_structure": "数据结构",
+        "system_design": "系统设计",
+    }
+    if domain in predefined:
+        return predefined[domain]
+    return domain.replace("_", " ").strip().title() or domain
 
 
 @router.delete("/{domain}", response_model=DeleteDomainResponse)
