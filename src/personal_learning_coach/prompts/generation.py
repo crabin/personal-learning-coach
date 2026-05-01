@@ -66,4 +66,5 @@ Requirements:
 - `practice_question` must ask the learner to build, write, test, compare, or demonstrate something practical.
 - Adapt the questions to the learning history: reinforce weak concepts when recent work is low-scoring, otherwise progress to the next suitable challenge.
 - Avoid repeating previous questions unless this is a review or consolidation push.
+- If the learning history lists "Previously asked questions to avoid repeating", generate semantically new questions instead of rewording those same prompts.
 """

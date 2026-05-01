@@ -1,0 +1,98 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1777554897297,
+  "projectRoot": "/Users/lpb/workspace/myProjects/personal-learning-coach",
+  "techStack": {
+    "languages": [
+      {
+        "name": "Python",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "pyproject.toml"
+        ]
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "fastapi",
+        "version": null,
+        "category": "backend"
+      },
+      {
+        "name": "pytest",
+        "version": null,
+        "category": "testing"
+      }
+    ],
+    "packageManager": null,
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": "pytest",
+    "lintCommand": "ruff check",
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "docs",
+      "src",
+      "tests"
+    ],
+    "gitBranches": null
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "data": {
+      "path": "data",
+      "purpose": "Data files",
+      "fileCount": 2,
+      "lastAccessed": 1777554897280,
+      "keyFiles": [
+        "personal_learning_coach.sqlite3"
+      ]
+    },
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 2,
+      "lastAccessed": 1777554897281,
+      "keyFiles": [
+        "personal_learning_coach_项目实施计划.md",
+        "personal_learning_coach_项目整体设计与需求规格说明书.md"
+      ]
+    },
+    "src": {
+      "path": "src",
+      "purpose": "Source code",
+      "fileCount": 0,
+      "lastAccessed": 1777554897282,
+      "keyFiles": []
+    },
+    "tests": {
+      "path": "tests",
+      "purpose": "Test files",
+      "fileCount": 13,
+      "lastAccessed": 1777554897283,
+      "keyFiles": [
+        "__init__.py",
+        "conftest.py",
+        "test_api.py",
+        "test_coach.py",
+        "test_config.py"
+      ]
+    }
+  },
+  "hotPaths": [],
+  "userDirectives": []
+}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,7 @@ from personal_learning_coach.models import (
     LearnerLevel,
     LearningPlan,
     PushRecord,
+    QuestionHistoryRecord,
     TopicNode,
     TopicProgress,
     TopicStatus,
@@ -182,6 +184,18 @@ def test_delete_domain_removes_related_records(tmp_data_dir: Path) -> None:
     data_store.topic_progress.save(progress)
     push = PushRecord(user_id="u1", topic_id=topic.topic_id, domain="ai_agent")
     data_store.push_records.save(push)
+    history_path = tmp_data_dir / "question_history" / "u1" / "ai_agent" / "h1.json"
+    history_path.parent.mkdir(parents=True)
+    history_path.write_text("{}", encoding="utf-8")
+    history = QuestionHistoryRecord(
+        user_id="u1",
+        domain="ai_agent",
+        topic_id=topic.topic_id,
+        push_id=push.push_id,
+        session_id=push.push_id,
+        json_path=str(history_path),
+    )
+    data_store.question_history.save(history)
 
     resp = client.request("DELETE", "/domains/ai_agent", json={"user_id": "u1", "confirm": True})
     assert resp.status_code == 200
@@ -190,6 +204,8 @@ def test_delete_domain_removes_related_records(tmp_data_dir: Path) -> None:
     assert data_store.learning_plans.filter(user_id="u1", domain="ai_agent") == []
     assert data_store.topic_progress.filter(user_id="u1", domain="ai_agent") == []
     assert data_store.push_records.filter(user_id="u1", domain="ai_agent") == []
+    assert data_store.question_history.filter(user_id="u1", domain="ai_agent") == []
+    assert not history_path.exists()
 
 
 def test_trigger_push_no_plan(tmp_data_dir: Path) -> None:
@@ -297,6 +313,13 @@ def test_submit_answer(tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> N
     saved_eval = data_store.evaluation_records.get(fake_eval.eval_id)
     assert saved_eval is not None
     assert saved_eval.progress_applied is True
+    history = data_store.question_history.filter(user_id="u1", push_id=push.push_id)
+    assert len(history) == 1
+    assert history[0].status == "evaluated"
+    history_payload = json.loads(Path(history[0].json_path).read_text(encoding="utf-8"))
+    assert history_payload["session_id"] == push.push_id
+    assert history_payload["submission"]["raw_answer"] == "My detailed answer here."
+    assert history_payload["evaluation"]["overall_score"] == 82.0
     updated_progress = data_store.topic_progress.filter(user_id="u1", topic_id="t1")
     assert updated_progress[0].status == TopicStatus.MASTERED
     assert updated_progress[0].mastery_score == 82.0
@@ -330,6 +353,9 @@ def test_health_reports_degraded_when_telegram_config_incomplete(
 def test_admin_backup_creates_files(tmp_data_dir: Path) -> None:
     enrollment = DomainEnrollment(user_id="u1", domain="ai_agent", status=DomainStatus.ACTIVE)
     data_store.domain_enrollments.save(enrollment)
+    history_dir = tmp_data_dir / "question_history" / "u1" / "ai_agent"
+    history_dir.mkdir(parents=True)
+    (history_dir / "history.json").write_text("{}", encoding="utf-8")
 
     resp = client.post("/admin/backup")
 
@@ -339,6 +365,7 @@ def test_admin_backup_creates_files(tmp_data_dir: Path) -> None:
     backup_path = Path(data["backup_path"])
     assert backup_path.exists()
     assert (backup_path / "personal_learning_coach.sqlite3").exists()
+    assert (backup_path / "question_history" / "u1" / "ai_agent" / "history.json").exists()
 
 
 def test_admin_backup_requires_api_key_when_enabled(

@@ -209,6 +209,21 @@ class EvaluationRecord(BaseModel):
     evaluated_at: datetime = Field(default_factory=_now)
 
 
+class QuestionHistoryRecord(BaseModel):
+    """SQLite index for a persisted question/answer/evaluation JSON file."""
+
+    history_id: str = Field(default_factory=_uuid)
+    user_id: str
+    domain: str
+    topic_id: str
+    push_id: str
+    session_id: str
+    json_path: str
+    status: str = "generated"
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)
+
+
 class AssessmentRecord(BaseModel):
     """Baseline or periodic assessment result."""
 

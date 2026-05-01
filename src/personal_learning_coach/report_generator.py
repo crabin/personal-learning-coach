@@ -12,8 +12,8 @@ from jinja2 import Environment, BaseLoader
 
 from personal_learning_coach import data_store
 from personal_learning_coach.mastery_engine import sync_unapplied_evaluations
-from personal_learning_coach.models import DomainEnrollment, DomainStatus, EvaluationRecord, LearningPlan
-from personal_learning_coach.review_engine import WeeklySummary, generate_weekly_summary
+from personal_learning_coach.models import DomainEnrollment, DomainStatus, EvaluationRecord
+from personal_learning_coach.review_engine import WeeklySummary, generate_weekly_summary, select_active_plan
 
 logger = logging.getLogger(__name__)
 
@@ -106,11 +106,10 @@ _HTML_TEMPLATE = """\
 
 
 def _resolve_topic_titles(user_id: str, domain: str) -> dict[str, str]:
-    plans: list[LearningPlan] = data_store.learning_plans.filter(user_id=user_id, domain=domain)
-    if not plans:
+    active_plan = select_active_plan(user_id, domain)
+    if active_plan is None:
         return {}
-    latest_plan = max(plans, key=lambda plan: plan.generated_at)
-    return {t.topic_id: t.title for t in latest_plan.topics}
+    return {t.topic_id: t.title for t in active_plan.topics}
 
 
 class _TopicRow:

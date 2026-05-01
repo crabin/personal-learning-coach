@@ -7,7 +7,14 @@ from datetime import UTC, datetime, timedelta
 from typing import TypedDict
 
 from personal_learning_coach import data_store
-from personal_learning_coach.models import EvaluationRecord, LearningPlan, TopicProgress, TopicStatus
+from personal_learning_coach.models import (
+    EvaluationRecord,
+    LearningPlan,
+    PushRecord,
+    SubmissionRecord,
+    TopicProgress,
+    TopicStatus,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -79,13 +86,57 @@ def reset_to_ready(progress: TopicProgress) -> TopicProgress:
     return progress
 
 
-def _active_plan_topic_ids(user_id: str, domain: str) -> set[str] | None:
+def select_active_plan(user_id: str, domain: str) -> LearningPlan | None:
+    """Return the plan that best matches the learner's active work."""
     plans: list[LearningPlan] = data_store.learning_plans.filter(user_id=user_id, domain=domain)
     if not plans:
         return None
 
-    latest_plan = max(plans, key=lambda plan: plan.generated_at)
-    return {topic.topic_id for topic in latest_plan.topics}
+    activity_topic_ids = _activity_topic_ids(user_id, domain)
+    plans_by_date = sorted(plans, key=lambda plan: plan.generated_at, reverse=True)
+    for plan in plans_by_date:
+        plan_topic_ids = {topic.topic_id for topic in plan.topics}
+        if plan_topic_ids.intersection(activity_topic_ids):
+            return plan
+    return plans_by_date[0]
+
+
+def _activity_topic_ids(user_id: str, domain: str) -> set[str]:
+    evaluations: list[EvaluationRecord] = data_store.evaluation_records.filter(
+        user_id=user_id, domain=domain
+    )
+    submissions: list[SubmissionRecord] = data_store.submission_records.filter(
+        user_id=user_id, domain=domain
+    )
+    pushes: list[PushRecord] = data_store.push_records.filter(user_id=user_id, domain=domain)
+    progress_records: list[TopicProgress] = data_store.topic_progress.filter(
+        user_id=user_id, domain=domain
+    )
+    active_progress_statuses = {
+        TopicStatus.PUSHED,
+        TopicStatus.STUDYING,
+        TopicStatus.SUBMITTED,
+        TopicStatus.EVALUATED,
+        TopicStatus.REVIEW_DUE,
+        TopicStatus.MASTERED,
+    }
+    return {
+        *{evaluation.topic_id for evaluation in evaluations},
+        *{submission.topic_id for submission in submissions},
+        *{push.topic_id for push in pushes},
+        *{
+            progress.topic_id
+            for progress in progress_records
+            if progress.attempts > 0 or progress.status in active_progress_statuses
+        },
+    }
+
+
+def _active_plan_topic_ids(user_id: str, domain: str) -> set[str] | None:
+    active_plan = select_active_plan(user_id, domain)
+    if active_plan is None:
+        return None
+    return {topic.topic_id for topic in active_plan.topics}
 
 
 def generate_weekly_summary(user_id: str, domain: str) -> WeeklySummary:

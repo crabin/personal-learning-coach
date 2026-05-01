@@ -151,6 +151,35 @@ def test_generate_push_content_normalizes_basic_questions(tmp_data_dir: Path) ->
     assert result["basic_questions"][1] == "2"
 
 
+def test_generate_push_content_avoids_repeated_basic_questions(tmp_data_dir: Path) -> None:
+    duplicate = "AI Agent 的五个核心组成分别是什么？"
+    content = {
+        "theory": "Agent systems use tools and memory.",
+        "basic_questions": [
+            duplicate,
+            "Agent 的工具调用如何工作？",
+            "记忆模块有什么作用？",
+        ],
+        "practice_question": "Improve an agent prompt.",
+        "reflection_question": "How did you avoid repeating prior mistakes?",
+    }
+    client = _mock_client(json.dumps(content))
+    topic = TopicNode(title="AI Agent 基础", order=0)
+
+    result = generate_push_content(
+        "ai_agent",
+        topic,
+        LearnerLevel.BEGINNER,
+        learning_context={"previous_questions": [duplicate]},
+        client=client,
+    )
+
+    prompt = client.messages.create.call_args.kwargs["messages"][0]["content"]
+    assert duplicate in prompt
+    assert duplicate not in result["basic_questions"]
+    assert len(result["basic_questions"]) == 3
+
+
 def test_push_today_delivers_and_persists(tmp_data_dir: Path) -> None:
     _setup_plan()
     content = {
@@ -172,6 +201,10 @@ def test_push_today_delivers_and_persists(tmp_data_dir: Path) -> None:
     assert saved is not None
     assert saved.theory == "LLMs use transformers."
     assert saved.content_snapshot["basic_questions"] == ["Q1?", "Q2?", "Q3?"]
+    history = data_store.question_history.filter(user_id="u1", push_id=push.push_id)
+    assert len(history) == 1
+    assert history[0].status == "generated"
+    assert Path(history[0].json_path).exists()
 
 
 def test_push_today_generates_with_learning_history_context(tmp_data_dir: Path) -> None:
@@ -313,6 +346,42 @@ def test_push_today_resends_interruption_recovery(tmp_data_dir: Path) -> None:
     assert len(adapter.delivered) == 1
 
 
+def test_push_today_regenerates_incomplete_interruption_recovery(tmp_data_dir: Path) -> None:
+    plan = _setup_plan()
+    first_topic = plan.topics[0]
+    progress = data_store.topic_progress.filter(user_id="u1", topic_id=first_topic.topic_id)[0]
+    progress.status = TopicStatus.PUSHED
+    data_store.topic_progress.save(progress)
+    data_store.push_records.save(
+        PushRecord(
+            user_id="u1",
+            topic_id=first_topic.topic_id,
+            domain="ai_agent",
+            push_type="new_topic",
+            theory="Old theory without answerable questions",
+            content_snapshot={"theory": "Old theory without answerable questions"},
+        )
+    )
+    content = {
+        "theory": "Fresh theory",
+        "basic_questions": ["Q1?", "Q2?", "Q3?"],
+        "practice_question": "Fresh practice?",
+        "reflection_question": "Fresh reflection?",
+    }
+    client = _mock_client(json.dumps(content))
+    adapter = _CapturingDelivery()
+
+    push = push_today("u1", "ai_agent", client=client, adapter=adapter)
+
+    assert push is not None
+    assert push.push_type == "new_topic"
+    assert push.theory == "Fresh theory"
+    assert push.content_snapshot["basic_questions"] == ["Q1?", "Q2?", "Q3?"]
+    refreshed_progress = data_store.topic_progress.filter(user_id="u1", topic_id=first_topic.topic_id)[0]
+    assert refreshed_progress.status == TopicStatus.PUSHED
+    assert len(adapter.delivered) == 1
+
+
 def test_push_today_persists_failed_delivery_record(tmp_data_dir: Path) -> None:
     _setup_plan()
     content = {
@@ -347,6 +416,12 @@ def test_push_today_persists_failed_recovery_delivery_record(tmp_data_dir: Path)
             theory="Resume this theory",
             practice_question="Resume practice?",
             reflection_question="Resume reflection?",
+            content_snapshot={
+                "theory": "Resume this theory",
+                "basic_questions": ["Q1?", "Q2?", "Q3?"],
+                "practice_question": "Resume practice?",
+                "reflection_question": "Resume reflection?",
+            },
         )
     )
 

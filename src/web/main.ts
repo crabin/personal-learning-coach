@@ -182,10 +182,6 @@ app.innerHTML = `
             <h3>今日推送</h3>
             <span id="questionBadge" class="question-badge">尚未获取</span>
           </div>
-          <article class="prompt-card theory-card">
-            <span>理论讲解</span>
-            <p id="theoryContent">点击“获取今日问题”后，这里会展示今天的理论内容。</p>
-          </article>
           <div class="basic-grid">
             <article class="prompt-card">
               <span>基础问题 1</span>
@@ -203,6 +199,10 @@ app.innerHTML = `
               <textarea id="basicAnswer3" rows="3" placeholder="回答基础问题 3"></textarea>
             </article>
           </div>
+          <article class="prompt-card theory-card">
+            <span>理论讲解</span>
+            <p id="theoryContent">点击“获取今日问题”后，这里会展示今天的理论内容。</p>
+          </article>
           <article class="prompt-card practice-card">
             <span>实践题</span>
             <p id="practiceQuestionContent">这里会展示系统推送的练习题。</p>

@@ -20,6 +20,9 @@ def create_backup() -> Path:
     backup_dir.mkdir(parents=True, exist_ok=True)
 
     shutil.copy2(database_path(), backup_dir / DATABASE_FILENAME)
+    history_dir = config.data_dir / "question_history"
+    if history_dir.exists():
+        shutil.copytree(history_dir, backup_dir / "question_history")
     record_runtime_event(
         level="info",
         category="backup",
@@ -40,6 +43,12 @@ def restore_backup(backup_path: str | None = None) -> Path:
 
     config.data_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, database_path())
+    history_source = selected / "question_history"
+    history_target = config.data_dir / "question_history"
+    if history_source.exists():
+        if history_target.exists():
+            shutil.rmtree(history_target)
+        shutil.copytree(history_source, history_target)
     record_runtime_event(
         level="info",
         category="restore",

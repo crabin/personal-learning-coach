@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -137,11 +138,16 @@ def _get_enrollment_or_404(user_id: str, domain: str) -> DomainEnrollment:
 
 
 def _delete_records_for_domain(user_id: str, domain: str) -> None:
+    history_records = data_store.question_history.filter(user_id=user_id, domain=domain)
+    for history_record in history_records:
+        Path(history_record.json_path).unlink(missing_ok=True)
+
     stores = (
         data_store.domain_enrollments,
         data_store.learning_plans,
         data_store.topic_progress,
         data_store.push_records,
+        data_store.question_history,
         data_store.submission_records,
         data_store.evaluation_records,
         data_store.assessment_records,

@@ -19,6 +19,7 @@ from personal_learning_coach.models import (
     EvaluationRecord,
     LearningPlan,
     PushRecord,
+    QuestionHistoryRecord,
     RuntimeEvent,
     SubmissionRecord,
     TopicProgress,
@@ -35,6 +36,7 @@ INDEXED_FIELDS = {
     "topic_id",
     "push_id",
     "submission_id",
+    "session_id",
     "status",
     "level",
     "category",
@@ -113,9 +115,9 @@ class _Store(Generic[T]):
                     record_id, payload_json, user_id, domain, topic_id, push_id,
                     submission_id, status, level, category, created_at, updated_at,
                     scheduled_at, delivered_at, submitted_at, evaluated_at,
-                    generated_at, enrolled_at
+                    generated_at, enrolled_at, session_id
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(record_id) DO UPDATE SET
                     payload_json = excluded.payload_json,
                     user_id = excluded.user_id,
@@ -133,7 +135,8 @@ class _Store(Generic[T]):
                     submitted_at = excluded.submitted_at,
                     evaluated_at = excluded.evaluated_at,
                     generated_at = excluded.generated_at,
-                    enrolled_at = excluded.enrolled_at
+                    enrolled_at = excluded.enrolled_at,
+                    session_id = excluded.session_id
                 """,
                 (
                     key,
@@ -154,6 +157,7 @@ class _Store(Generic[T]):
                     columns.get("evaluated_at"),
                     columns.get("generated_at"),
                     columns.get("enrolled_at"),
+                    columns.get("session_id"),
                 ),
             )
         return record
@@ -240,13 +244,21 @@ def _ensure_table(conn: sqlite3.Connection, table: str) -> None:
             submitted_at TEXT,
             evaluated_at TEXT,
             generated_at TEXT,
-            enrolled_at TEXT
+            enrolled_at TEXT,
+            session_id TEXT
         )
         """
     )
-    for field in ("user_id", "domain", "topic_id", "status", "category"):
+    _ensure_column(conn, table, "session_id")
+    for field in ("user_id", "domain", "topic_id", "status", "category", "session_id"):
         conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_{field} ON {table} ({field})")
     conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_user_domain ON {table} (user_id, domain)")
+
+
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str) -> None:
+    columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column not in columns:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT")
 
 
 def _table_name(filename: str) -> str:
@@ -290,6 +302,7 @@ STORE_MODELS: dict[str, type[BaseModel]] = {
     "learning_plans": LearningPlan,
     "topic_progress": TopicProgress,
     "push_records": PushRecord,
+    "question_history": QuestionHistoryRecord,
     "submission_records": SubmissionRecord,
     "evaluation_records": EvaluationRecord,
     "assessment_records": AssessmentRecord,
@@ -309,6 +322,7 @@ domain_enrollments = _Store("domain_enrollments.json", DomainEnrollment)
 learning_plans = _Store("learning_plans.json", LearningPlan)
 topic_progress = _Store("topic_progress.json", TopicProgress)
 push_records = _Store("push_records.json", PushRecord)
+question_history = _Store("question_history.json", QuestionHistoryRecord)
 submission_records = _Store("submission_records.json", SubmissionRecord)
 evaluation_records = _Store("evaluation_records.json", EvaluationRecord)
 assessment_records = _Store("assessment_records.json", AssessmentRecord)

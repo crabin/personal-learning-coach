@@ -50,6 +50,11 @@
 - 已补充测试覆盖提交即更新、报告刷新补偿同步、flag 默认值
 - 已完成验证：`uv run pytest -q` 106 passed，`uv run ruff check .` 通过，`uv run mypy src` 通过
 
+补充修复：
+- 已修复报告总是选择最新 plan 的问题：现在会优先选择包含提交、评价、推送或非初始进度活动的学习计划
+- 你的当前数据中，报告会展示已有提交记录的 12-topic 计划，而不是后生成但没有学习活动的 10-topic 空计划
+- 已完成验证：`uv run pytest -q` 107 passed，`uv run ruff check .` 通过，`uv run mypy src` 通过
+
 ### Phase 8: 结构化动态学习报告
 状态：`complete`
 

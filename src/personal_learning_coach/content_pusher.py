@@ -26,6 +26,7 @@ from personal_learning_coach.models import (
 )
 from personal_learning_coach.online_resource import OnlineResourceService
 from personal_learning_coach.prompts.generation import CONTENT_GENERATION_PROMPT, CONTENT_SYSTEM
+from personal_learning_coach.question_history import previous_questions, record_generated_push
 
 logger = logging.getLogger(__name__)
 _ONLINE_RESOURCE_SERVICE = OnlineResourceService()
@@ -120,7 +121,12 @@ def generate_push_content(
         client=client,
     )
     content = cast(dict[str, Any], _parse_json(raw))
-    content["basic_questions"] = _normalize_basic_questions(content.get("basic_questions"), topic.title)
+    avoid_questions = (learning_context or {}).get("previous_questions", [])
+    content["basic_questions"] = _normalize_basic_questions(
+        content.get("basic_questions"),
+        topic.title,
+        avoid_questions if isinstance(avoid_questions, list) else [],
+    )
     content["theory"] = str(content.get("theory", "")).strip()
     content["practice_question"] = str(content.get("practice_question", "")).strip()
     content["reflection_question"] = str(content.get("reflection_question", "")).strip()
@@ -153,6 +159,7 @@ def _build_learning_context(
         "recent_evaluations": evaluations,
         "recent_submissions": _recent_submissions(user_id, domain, titles),
         "recent_assessments": _recent_assessments(user_id, domain),
+        "previous_questions": previous_questions(user_id, domain),
         "generation_guidance": _generation_guidance(progress, evaluations),
     }
 
@@ -261,6 +268,7 @@ def _format_learning_context(context: dict[str, Any] | None) -> str:
     lines.extend(_format_assessment_lines(context.get("recent_assessments", [])))
     lines.extend(_format_evaluation_lines(context.get("recent_evaluations", [])))
     lines.extend(_format_submission_lines(context.get("recent_submissions", [])))
+    lines.extend(_format_previous_question_lines(context.get("previous_questions", [])))
     lines.append(f"Guidance: {context.get('generation_guidance', '')}")
     return "\n".join(line for line in lines if line)
 
@@ -328,8 +336,20 @@ def _format_submission_lines(submissions: list[dict[str, Any]]) -> list[str]:
     ]
 
 
-def _normalize_basic_questions(raw_questions: Any, topic_title: str) -> list[str]:
+def _format_previous_question_lines(questions: list[Any]) -> list[str]:
+    normalized = [str(question).strip() for question in questions if str(question).strip()]
+    if not normalized:
+        return []
+    return ["Previously asked questions to avoid repeating: " + " | ".join(normalized[:12])]
+
+
+def _normalize_basic_questions(
+    raw_questions: Any,
+    topic_title: str,
+    avoid_questions: list[Any] | None = None,
+) -> list[str]:
     normalized: list[str] = []
+    blocked = {str(question).strip().casefold() for question in (avoid_questions or [])}
 
     if isinstance(raw_questions, list):
         for item in raw_questions:
@@ -341,7 +361,7 @@ def _normalize_basic_questions(raw_questions: Any, topic_title: str) -> list[str
             else:
                 value = str(item).strip()
 
-            if value:
+            if value and value.casefold() not in blocked and value not in normalized:
                 normalized.append(value)
 
     fallback_questions = [
@@ -353,9 +373,31 @@ def _normalize_basic_questions(raw_questions: Any, topic_title: str) -> list[str
     for question in fallback_questions:
         if len(normalized) >= 3:
             break
-        normalized.append(question)
+        if question.casefold() not in blocked and question not in normalized:
+            normalized.append(question)
+
+    index = 1
+    while len(normalized) < 3:
+        normalized.append(f"{topic_title} 的补充理解问题 {index}：请结合一个新例子说明。")
+        index += 1
 
     return normalized[:3]
+
+
+def _basic_questions_from_push(push: PushRecord) -> list[str]:
+    questions = push.content_snapshot.get("basic_questions", [])
+    if not isinstance(questions, list):
+        return []
+    return [str(question).strip() for question in questions if str(question).strip()]
+
+
+def _is_answerable_push(push: PushRecord) -> bool:
+    return bool(
+        push.theory.strip()
+        and len(_basic_questions_from_push(push)) >= 3
+        and push.practice_question.strip()
+        and push.reflection_question.strip()
+    )
 
 
 def _find_interrupted_push(user_id: str, domain: str) -> tuple[PushRecord, TopicProgress] | None:
@@ -374,6 +416,17 @@ def _find_interrupted_push(user_id: str, domain: str) -> tuple[PushRecord, Topic
             continue
         submissions = data_store.submission_records.filter(user_id=user_id, push_id=push.push_id)
         if submissions:
+            continue
+        if not _is_answerable_push(push):
+            progress.status = TopicStatus.READY
+            data_store.topic_progress.save(progress)
+            logger.warning(
+                "Skipped incomplete interrupted push for user=%s domain=%s topic=%s push=%s",
+                user_id,
+                domain,
+                push.topic_id,
+                push.push_id,
+            )
             continue
         return push, progress
     return None
@@ -487,6 +540,7 @@ def push_today(
 
     delivery = adapter or _get_delivery_adapter()
     _deliver_and_record(push, delivery)
+    record_generated_push(push, topic.title)
 
     # Advance topic status to pushed
     progress.status = TopicStatus.PUSHED

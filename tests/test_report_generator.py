@@ -153,6 +153,60 @@ def test_generate_report_uses_latest_plan_titles_only(tmp_data_dir: Path) -> Non
     assert report["topic_rows"][0].title == "New Topic"
 
 
+def test_generate_report_uses_plan_with_learning_activity(tmp_data_dir: Path) -> None:
+    active_topic = TopicNode(title="Active Topic", order=0)
+    empty_topic = TopicNode(title="New Empty Topic", order=0)
+    active_plan = LearningPlan(
+        user_id="u1",
+        domain="ai_agent",
+        level=LearnerLevel.BEGINNER,
+        topics=[active_topic],
+    )
+    empty_plan = LearningPlan(
+        user_id="u1",
+        domain="ai_agent",
+        level=LearnerLevel.BEGINNER,
+        topics=[empty_topic],
+    )
+    data_store.learning_plans.save(active_plan)
+    data_store.learning_plans.save(empty_plan)
+    data_store.topic_progress.save(
+        TopicProgress(
+            user_id="u1",
+            topic_id=active_topic.topic_id,
+            domain="ai_agent",
+            status=TopicStatus.REVIEW_DUE,
+            mastery_score=55.0,
+            attempts=3,
+        )
+    )
+    data_store.topic_progress.save(
+        TopicProgress(
+            user_id="u1",
+            topic_id=empty_topic.topic_id,
+            domain="ai_agent",
+            status=TopicStatus.READY,
+        )
+    )
+    data_store.evaluation_records.save(
+        EvaluationRecord(
+            submission_id="s1",
+            user_id="u1",
+            topic_id=active_topic.topic_id,
+            domain="ai_agent",
+            overall_score=82.0,
+            progress_applied=True,
+        )
+    )
+
+    report = generate_report("u1", "ai_agent")
+
+    assert len(report["topic_rows"]) == 1
+    assert report["topic_rows"][0].title == "Active Topic"
+    assert report["topic_rows"][0].status == "review_due"
+    assert report["summary"]["avg_score"] == 82.0
+
+
 def test_generate_report_payload_syncs_unapplied_evaluations(tmp_data_dir: Path) -> None:
     topic = TopicNode(title="Adaptive Prompting", order=0)
     plan = LearningPlan(user_id="u1", domain="ai_agent", level=LearnerLevel.BEGINNER, topics=[topic])

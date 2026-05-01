@@ -181,6 +181,22 @@
 - `uv run pytest -q`：106 passed
 - `uv run ruff check .`：通过
 - `uv run mypy src`：通过
+
+### Session 2026-04-30 active report plan selection
+
+已完成：
+- 根据用户截图排查真实 SQLite 数据：evaluation/progress 都在 topic `2464b338-...` 上，且 `progress_applied=1`
+- 发现报告选择了最新生成的 10-topic plan，但提交和评价属于稍早的 12-topic plan，因此 Summary/Topic Details 把真实学习活动过滤掉了
+- 修改 `review_engine.select_active_plan(...)`：优先选择包含 evaluation、submission、push 或非初始 topic progress 的 plan；没有活动时才退回最新 plan
+- 修改 `report_generator._resolve_topic_titles(...)` 使用同一 active plan 选择逻辑，避免 summary 和标题来自不同 plan
+- 新增回归测试覆盖“新空 plan 存在，但旧 plan 有学习活动”的报告展示
+- 用真实数据验证：当前报告 summary 显示 `total_topics=12`，第一项 `AI Agent基础概念与学习环境搭建` 状态为 `review_due`，mastery 为 `55.45`
+
+验证：
+- `uv run pytest tests/test_report_generator.py::test_generate_report_uses_plan_with_learning_activity tests/test_report_generator.py::test_generate_report_uses_latest_plan_titles_only -q`：2 passed
+- `uv run pytest -q`：107 passed
+- `uv run ruff check .`：通过
+- `uv run mypy src`：通过
 关键证据：
 - `pytest -q` 结果为：
   - 94 个测试通过
