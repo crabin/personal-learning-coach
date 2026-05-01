@@ -21,3 +21,6 @@ data/
 .coverage
 htmlcov/
 
+.idea/
+
+
