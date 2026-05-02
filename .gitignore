@@ -15,7 +15,7 @@ data/
 
 # Environment secrets
 .env
-.env.*
+
 
 # Coverage
 .coverage
