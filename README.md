@@ -252,12 +252,30 @@ curl http://127.0.0.1:8000/health
 
 前端登录与注册使用以下接口：
 
-- `POST /auth/register`
+- `GET /auth/register/captcha`
+- `POST /auth/register/start`
+- `POST /auth/register/complete`
 - `POST /auth/login`
 - `POST /auth/logout`
 - `GET /auth/me`
 
-登录后前端会自动携带 Bearer Token。
+注册时需要先填写图片验证码，再接收邮箱验证码。邮箱验证码校验通过后，前端会自动保存 Bearer Token 并进入学习系统。
+
+默认邮件发送配置使用 QQ 个人邮箱 SMTP。`SMTP_PASSWORD` 必须填写 QQ 邮箱“授权码”，不要填写 QQ 登录密码：
+
+```env
+SMTP_HOST=smtp.qq.com
+SMTP_PORT=465
+SMTP_USE_SSL=true
+SMTP_USE_TLS=false
+SMTP_USERNAME=your-qq-email@qq.com
+SMTP_PASSWORD=your-qq-mail-authorization-code
+SMTP_FROM_EMAIL=your-qq-email@qq.com
+SMTP_FROM_NAME=Personal Learning Coach
+SMTP_TIMEOUT_SECONDS=10
+```
+
+如果未配置 SMTP，注册发送邮箱验证码会返回服务不可用，账号不会被创建。
 
 ### 管理员权限
 

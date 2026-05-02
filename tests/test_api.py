@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import base64
+from datetime import UTC, datetime, timedelta
+from io import BytesIO
 import json
 from pathlib import Path
 
@@ -9,6 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
+from personal_learning_coach.api.routes import auth as auth_routes
 from personal_learning_coach.api.main import app
 from personal_learning_coach import data_store
 from personal_learning_coach.models import (
@@ -19,6 +23,8 @@ from personal_learning_coach.models import (
     LearningPlan,
     PushRecord,
     QuestionHistoryRecord,
+    RegistrationCaptchaChallenge,
+    RegistrationEmailChallenge,
     TopicNode,
     TopicProgress,
     TopicStatus,
@@ -26,6 +32,7 @@ from personal_learning_coach.models import (
     UserRole,
 )
 from personal_learning_coach.security import create_session, hash_password
+from personal_learning_coach.registration_verification import hash_verification_code
 
 client = TestClient(app)
 
@@ -96,14 +103,157 @@ def test_register_login_me_and_logout(tmp_data_dir: Path) -> None:
         "/auth/register",
         json={"name": "Learner", "email": "learner@example.com", "password": "password123"},
     )
-    assert registered.status_code == 200
-    assert registered.json()["user"]["role"] == "learner"
+    assert registered.status_code == 410
+    assert data_store.user_profiles.all() == []
+
+
+def test_register_captcha_returns_image_and_saves_challenge(tmp_data_dir: Path) -> None:
+    resp = client.get("/auth/register/captcha")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["captcha_id"]
+    assert payload["expires_in_seconds"] == 300
+    assert payload["image_data_url"].startswith("data:image/png;base64,")
+
+    encoded = payload["image_data_url"].split(",", 1)[1]
+    with Image.open(BytesIO(base64.b64decode(encoded))) as image:
+        assert image.format == "PNG"
+        assert image.width >= 160
+        assert image.height >= 60
+
+    challenge = data_store.registration_captcha_challenges.get(payload["captcha_id"])
+    assert challenge is not None
+
+
+def test_register_start_rejects_wrong_captcha_without_email(
+    tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sent: list[tuple[str, str]] = []
+    monkeypatch.setattr(auth_routes, "send_registration_email_code", lambda email, code: sent.append((email, code)))
+    challenge = RegistrationCaptchaChallenge(
+        code_hash=hash_verification_code("ABCDE"),
+        expires_at=datetime.now(UTC) + timedelta(minutes=5),
+    )
+    data_store.registration_captcha_challenges.save(challenge)
+
+    resp = client.post(
+        "/auth/register/start",
+        json={
+            "name": "Learner",
+            "email": "learner@example.com",
+            "password": "password123",
+            "captcha_id": challenge.captcha_id,
+            "captcha_code": "WRONG",
+        },
+    )
+
+    assert resp.status_code == 400
+    assert sent == []
+    assert data_store.user_profiles.all() == []
+
+
+def test_register_start_requires_smtp_config(tmp_data_dir: Path) -> None:
+    challenge = RegistrationCaptchaChallenge(
+        code_hash=hash_verification_code("ABCDE"),
+        expires_at=datetime.now(UTC) + timedelta(minutes=5),
+    )
+    data_store.registration_captcha_challenges.save(challenge)
+
+    resp = client.post(
+        "/auth/register/start",
+        json={
+            "name": "Learner",
+            "email": "learner@example.com",
+            "password": "password123",
+            "captcha_id": challenge.captcha_id,
+            "captcha_code": "ABCDE",
+        },
+    )
+
+    assert resp.status_code == 503
+    assert data_store.user_profiles.all() == []
+
+
+def test_register_start_sends_email_without_creating_user(
+    tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure_smtp(monkeypatch)
+    sent: list[tuple[str, str]] = []
+    monkeypatch.setattr(auth_routes, "send_registration_email_code", lambda email, code: sent.append((email, code)))
+    challenge = RegistrationCaptchaChallenge(
+        code_hash=hash_verification_code("ABCDE"),
+        expires_at=datetime.now(UTC) + timedelta(minutes=5),
+    )
+    data_store.registration_captcha_challenges.save(challenge)
+
+    resp = client.post(
+        "/auth/register/start",
+        json={
+            "name": "Learner",
+            "email": "learner@example.com",
+            "password": "password123",
+            "captcha_id": challenge.captcha_id,
+            "captcha_code": "ABCDE",
+        },
+    )
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["verification_id"]
+    assert payload["email"] == "learner@example.com"
+    assert payload["expires_in_seconds"] == 600
+    assert sent == [("learner@example.com", sent[0][1])]
+    assert len(sent[0][1]) == 6
+    assert data_store.user_profiles.all() == []
+    assert data_store.registration_email_challenges.get(payload["verification_id"]) is not None
+
+
+def test_register_complete_validates_email_code_and_logs_in(
+    tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure_smtp(monkeypatch)
+    sent: list[str] = []
+    monkeypatch.setattr(auth_routes, "send_registration_email_code", lambda _email, code: sent.append(code))
+    captcha = RegistrationCaptchaChallenge(
+        code_hash=hash_verification_code("ABCDE"),
+        expires_at=datetime.now(UTC) + timedelta(minutes=5),
+    )
+    data_store.registration_captcha_challenges.save(captcha)
+    started = client.post(
+        "/auth/register/start",
+        json={
+            "name": "Learner",
+            "email": "learner@example.com",
+            "password": "password123",
+            "captcha_id": captcha.captcha_id,
+            "captcha_code": "ABCDE",
+        },
+    )
+    verification_id = started.json()["verification_id"]
+
+    wrong = client.post(
+        "/auth/register/complete",
+        json={"verification_id": verification_id, "email_code": "000000"},
+    )
+    assert wrong.status_code == 400
+
+    completed = client.post(
+        "/auth/register/complete",
+        json={"verification_id": verification_id, "email_code": sent[0]},
+    )
+    assert completed.status_code == 200
+    assert completed.json()["user"]["role"] == "learner"
+    token = completed.json()["token"]
+    me = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me.status_code == 200
+    assert me.json()["email"] == "learner@example.com"
+    assert data_store.registration_email_challenges.get(verification_id) is None
 
     duplicate = client.post(
-        "/auth/register",
-        json={"name": "Learner", "email": "learner@example.com", "password": "password123"},
+        "/auth/register/complete",
+        json={"verification_id": verification_id, "email_code": sent[0]},
     )
-    assert duplicate.status_code == 409
+    assert duplicate.status_code == 400
 
     login = client.post(
         "/auth/login",
@@ -120,6 +270,35 @@ def test_register_login_me_and_logout(tmp_data_dir: Path) -> None:
     assert logout.status_code == 200
     expired = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert expired.status_code == 401
+
+
+def test_register_complete_rejects_expired_email_code(tmp_data_dir: Path) -> None:
+    challenge = RegistrationEmailChallenge(
+        name="Learner",
+        email="learner@example.com",
+        password_hash=hash_password("password123"),
+        code_hash=hash_verification_code("123456"),
+        expires_at=datetime.now(UTC) - timedelta(seconds=1),
+    )
+    data_store.registration_email_challenges.save(challenge)
+
+    resp = client.post(
+        "/auth/register/complete",
+        json={"verification_id": challenge.verification_id, "email_code": "123456"},
+    )
+
+    assert resp.status_code == 400
+    assert data_store.user_profiles.all() == []
+
+
+def _configure_smtp(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SMTP_HOST", "smtp.qq.com")
+    monkeypatch.setenv("SMTP_PORT", "465")
+    monkeypatch.setenv("SMTP_USE_SSL", "true")
+    monkeypatch.setenv("SMTP_USE_TLS", "false")
+    monkeypatch.setenv("SMTP_USERNAME", "sender@qq.com")
+    monkeypatch.setenv("SMTP_PASSWORD", "authorization-code")
+    monkeypatch.setenv("SMTP_FROM_EMAIL", "sender@qq.com")
 
 
 def test_learning_routes_require_login(tmp_data_dir: Path) -> None:
@@ -192,9 +371,16 @@ def test_list_domains_returns_known_domain_options(tmp_data_dir: Path) -> None:
 
     assert resp.status_code == 200
     data = resp.json()
-    assert {"domain": "ai_agent", "label": "AI Agent"} in data
+    assert {"domain": "ai_agent", "label": "AI Agent"} not in data
     assert {"domain": "model_training", "label": "模型训练"} in data
     assert {"domain": "fullstack_development", "label": "全栈开发"} in data
+
+
+def test_list_domains_returns_empty_for_user_without_domains(tmp_data_dir: Path) -> None:
+    resp = client.get("/domains", headers=_auth_headers("new-user"))
+
+    assert resp.status_code == 200
+    assert resp.json() == []
 
 
 def test_get_domain_summary_returns_real_goal_sidebar_data(tmp_data_dir: Path) -> None:

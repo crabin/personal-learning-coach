@@ -27,6 +27,25 @@
 
 ## 阶段任务
 
+### Phase 11: 学习报告 JSON 导出修复
+状态：`complete`
+
+目标：
+- 修复前端“导出 JSON”按钮点击无效的问题
+- 保证报告页可以把当前报告数据下载为本地 JSON 文件
+
+验收标准：
+- 报告页“导出 JSON”按钮已接入点击事件
+- 已加载报告时可直接导出；未提前加载时会先拉取报告再导出
+- 前端测试与构建通过
+
+完成情况：
+- 已为报告页导出按钮补齐 `id` 和事件绑定
+- 已新增 `reportExport.ts`，统一负责导出文件名与 JSON 序列化
+- 已缓存当前报告数据，避免重复请求；无缓存时会自动拉取后再导出
+- 已补充前端测试覆盖文件名与序列化行为
+- 已完成验证：`npm test -- --run` 34 passed，`npm run build` 通过
+
 ### Phase 10: 用户认证、角色权限与管理员系统管理
 状态：`complete`
 
@@ -303,6 +322,44 @@
 
 剩余：
 - 无。Phase 4 当前验收项已完成。
+
+### Phase 11: README 前端优先化与 GitHub 同步
+状态：`in_progress`
+
+目标：
+- 将 README 调整为以前端 Web 使用为主的项目介绍和上手路径
+- 明确登录/注册、学习流程、管理员运维和前后端联调方式
+- 将 README 改动单独提交并推送到用户提供的 GitHub 仓库
+
+验收标准：
+- README 首页优先展示 Web 界面启动与使用
+- 保留后端 API、CLI、鉴权、环境变量和开发检查说明
+- 提交时只包含本次 README 相关改动，不带入其他未提交文件
+
+### Phase 12: QQ 邮箱验证码注册
+状态：`complete`
+
+目标：
+- 注册流程改为图片验证码、QQ 邮箱验证码、后端校验后创建账号并自动登录
+- 使用 QQ 个人邮箱 SMTP 配置发送验证码邮件
+- 防止旧 `/auth/register` 直接绕过邮箱验证
+
+验收标准：
+- `/auth/register/captcha`、`/auth/register/start`、`/auth/register/complete` 可用
+- SMTP 未配置时明确返回服务不可用
+- 验证码错误、过期或超过尝试次数时注册失败
+- 邮箱验证码通过后创建普通用户并返回 Bearer token
+- 前端注册 UI 支持图片验证码、发送邮件验证码、完成注册并登录
+- 后端测试、ruff、mypy、前端测试与构建通过
+
+完成情况：
+- 已新增图片验证码、邮箱验证码 challenge 模型与 SQLite store
+- 已新增注册验证码工具和 QQ SMTP 邮件发送 helper
+- 已将旧 `/auth/register` 改为 `410 Gone`，防止绕过邮箱验证
+- 已新增 `/auth/register/captcha`、`/auth/register/start`、`/auth/register/complete`
+- 已改造前端注册面板，支持刷新图片验证码、发送邮箱验证码、完成注册并自动登录
+- 已补充 QQ 邮箱 SMTP 环境变量模板与 README 说明
+- 已完成验证：`uv run pytest -q` 126 passed，`uv run ruff check .` 通过，`uv run mypy src` 通过，`npm test -- --run` 29 passed，`npm run build` 通过
 
 ## 决策记录
 

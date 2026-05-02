@@ -5,6 +5,13 @@
 
 ## 8. 历史感知题目生成发现
 
+## 13. 报告 JSON 导出失效发现
+
+- 报告页工具栏里的“导出 JSON”按钮原先没有 `id`，也没有绑定任何点击处理逻辑。
+- 当前报告页虽然能通过 `/reports/{domain}` 拉取结构化 JSON，但前端没有把这份数据保存为可复用的“当前报告”状态。
+- 因此用户点击“导出 JSON”时不会触发下载，问题在前端交互接线缺失，不在后端报告接口。
+- 修复需要两部分：补齐按钮绑定，以及提供稳定的 JSON 文件名和序列化逻辑。
+
 - `/schedules/trigger` 通过 `content_pusher.push_today(...)` 触发生成和投递。
 - 当前 `generate_push_content(...)` 只把 `domain`、`topic_title`、`topic_description`、`level` 放进 prompt，因此同一 topic/level 下 prompt 基本固定。
 - 可用于个性化的历史数据已经存在：`evaluation_records` 保存题目评价、分数、强弱项、missed concepts、next_action；`submission_records` 保存原始答案和实践结果；`assessment_records` 保存阶段/最终整体评价；`topic_progress` 保存 topic 状态、mastery、attempts；`domain_enrollments` 保存当前水平、目标水平和学习偏好。
@@ -205,6 +212,29 @@
 - 当前真实 `data/*.json` collection 包含：domain enrollments、learning plans、topic progress、push records、submission records、evaluation records、runtime events；另有 `data/pushes/` Markdown 和 `data/logs/` 不属于结构化数据迁移范围。
 - 项目当前未依赖 SQLAlchemy，使用标准库 `sqlite3` 能满足需求且改动面最小。
 - 工作区已有与本任务无关的未提交业务/前端修改，本轮应避免回滚或格式化这些文件。
+
+## 11. README 前端优先化发现
+
+- 当前项目最适合新用户的入口是 `src/web` 单页前端，而不是直接调用 CLI 或手写 API 请求。
+- 前端已覆盖完整学习流程：登录/注册、学习目标创建、每日问题获取与提交、学习报告、个人设置，以及管理员的用户/领域/备份运维。
+- `src/web/vite.config.ts` 已内置到 `http://127.0.0.1:8000` 的代理，前端本地开发默认不需要手工配置 CORS。
+- 管理页仅管理员可见；普通用户登录后主要使用目标、问答、进度和个人设置页面。
+- README 应优先讲清“先启动后端，再启动前端，再登录使用”的黄金路径。
+
+## 12. QQ 邮箱验证码注册发现
+
+- 现有 `/auth/register` 会直接创建用户并签发 token，需要改为不可用以防绕过新验证流程。
+- SQLite 通用 collection 能承载短期 captcha/email challenge，只需新增 Pydantic 模型并注册 store。
+- 项目已有 Pillow 依赖，可用于生成图片验证码，不需要新增第三方 captcha 包。
+- QQ 个人邮箱发信用 `smtp.qq.com`、465、SSL，密码应使用 QQ 邮箱授权码而不是登录密码。
+- 前端 auth shell 目前集中在 `src/web/main.ts`，最小改法是在现有注册面板内增加验证码阶段状态。
+
+## 13. 新用户空领域发现
+
+- `/domains` 原实现会把 `ai_agent` 合并进所有用户的领域列表，即使新注册用户没有 enrollment 或 learning plan。
+- 前端领域下拉框初始 HTML 也写死 `AI Agent`，与后端默认值叠加后会让空用户看到不存在的学习领域。
+- 问答和进度页原本只依赖当前 select value；当 select 被默认值填充时会继续请求题目、报告和侧栏数据。
+- 修复应区分“已有真实领域”和“正在输入的新领域草稿”：草稿允许创建学习目标，但不能解锁问答/进度页。
 
 ## 8. 用户认证与权限实现发现
 

@@ -34,6 +34,25 @@
 
 ### Session 2026-04-28
 
+### Session 2026-05-02 report json export fix
+
+已完成：
+- 排查报告页“导出 JSON”按钮无响应问题，确认根因是前端按钮未绑定事件
+- 新增 `src/web/reportExport.ts`，集中处理导出文件名生成和 JSON 序列化
+- 为报告页导出按钮补齐 `id` 与点击处理逻辑
+- 新增当前报告缓存；如果用户未先刷新报告，导出时会自动请求一次报告数据
+- 新增前端测试覆盖导出文件名与 JSON 序列化行为
+
+错误记录：
+- 首次执行 `npm test -- --run src/web/reportExport.test.ts` 未命中测试文件；改用 `npm test -- --run reportExport.test.ts` 后通过
+
+验证：
+- `npm test -- --run reportExport.test.ts reportView.test.ts`：5 passed
+- `npm test -- --run`：34 passed
+- `npm run build`：通过
+
+### Session 2026-04-28
+
 已完成：
 - 读取 `CLAUDE.md`、`AGENTS.md`、实施计划、需求规格说明书
 - 盘点仓库代码结构与测试分布
@@ -224,6 +243,48 @@
 
 - 本次文档以“当前代码事实”为准，不假设未提交改动已经完成。
 - 后续若代码继续演进，应在每次阶段收口后同步更新这三份文件。
+
+### Session 2026-05-02 README frontend-first refresh
+
+已完成：
+- 读取现有 README、task_plan、findings、progress 以及前端主入口代码
+- 确认项目当前最适合上手的入口是 Web 前端，不应继续把 README 重点放在 CLI/API 示例上
+- 确认前端已支持登录/注册、学习目标、每日问答、学习报告、个人设置和管理员运维
+- 确认 Vite 默认代理 `/auth`、`/domains`、`/schedules`、`/submissions`、`/reports`、`/admin` 到 `http://127.0.0.1:8000`
+- 确认管理员账号来自环境变量种子：`ADMIN_SEED_EMAIL`、`ADMIN_SEED_PASSWORD`、`ADMIN_SEED_NAME`
+- 下一步将重写 README 为前端优先，并单独提交推送到用户提供的 GitHub 仓库
+
+### Session 2026-05-02 QQ email verification registration
+
+已完成：
+- 已确认注册流程改为图片验证码 -> QQ 邮箱验证码 -> 完成注册并自动登录
+- 已确认 QQ 个人邮箱 SMTP 默认配置：`smtp.qq.com`、465、SSL、授权码
+- 已将 Phase 12 写入 `task_plan.md`
+- 已新增验证码模型、store、后端接口、QQ SMTP 邮件发送 helper 和前端三段式注册 UI
+- 已将旧 `/auth/register` 改为 `410 Gone`，避免绕过邮箱验证
+- 已补充 `.env.example` 和 README 中的 QQ 邮箱 SMTP 配置说明
+- 已完成验证：`uv run pytest -q` 126 passed，`uv run ruff check .` 通过，`uv run mypy src` 通过，`npm test -- --run` 29 passed，`npm run build` 通过
+
+注意：
+- 当前工作区已有与本功能混杂在同一文件里的未提交改动，未自动创建提交，避免把非本轮改动一起提交。
+
+### Session 2026-05-02 empty-domain guard after registration
+
+已完成：
+- 已确认新用户空领域时，后端 `/domains` 会无条件返回默认 `ai_agent`，导致前端误以为存在学习领域。
+- 已移除 `/domains` 的默认 `ai_agent` 注入，只返回当前用户真实存在于 enrollment/plan 的领域。
+- 已新增前端领域选择状态 helper：空领域显示“没有领域”，草稿新领域可用于创建目标但不会被当成已存在领域。
+- 已为问答和进度页增加真实领域守卫；没有现有领域时显示“你还没有创建学习领域，请先在学习目标页创建。”，不再触发题目/报告接口。
+- 已补充后端和前端定向测试。
+
+验证：
+- `uv run pytest tests/test_api.py -q -k "list_domains"`：2 passed
+- `uv run ruff check src/personal_learning_coach/api/routes/domains.py tests/test_api.py`：通过
+- `npm test -- --run`：32 passed
+- `npm run build`：通过
+
+注意：
+- `uv run pytest -q` 当前为 126 passed / 1 failed，失败项是既有注册 SMTP 配置测试 `test_register_start_requires_smtp_config` 期望 503 但实际返回 200，与本轮领域空状态修复无关。
 
 ### Session 2026-05-01 auth and admin management
 

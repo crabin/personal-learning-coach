@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1777554897297,
+  "lastScanned": 1777701760207,
   "projectRoot": "/Users/lpb/workspace/myProjects/personal-learning-coach",
   "techStack": {
     "languages": [
@@ -56,8 +56,8 @@
     "data": {
       "path": "data",
       "purpose": "Data files",
-      "fileCount": 2,
-      "lastAccessed": 1777554897280,
+      "fileCount": 3,
+      "lastAccessed": 1777701760194,
       "keyFiles": [
         "personal_learning_coach.sqlite3"
       ]
@@ -66,7 +66,7 @@
       "path": "docs",
       "purpose": "Documentation",
       "fileCount": 2,
-      "lastAccessed": 1777554897281,
+      "lastAccessed": 1777701760195,
       "keyFiles": [
         "personal_learning_coach_项目实施计划.md",
         "personal_learning_coach_项目整体设计与需求规格说明书.md"
@@ -75,15 +75,15 @@
     "src": {
       "path": "src",
       "purpose": "Source code",
-      "fileCount": 0,
-      "lastAccessed": 1777554897282,
+      "fileCount": 1,
+      "lastAccessed": 1777701760195,
       "keyFiles": []
     },
     "tests": {
       "path": "tests",
       "purpose": "Test files",
       "fileCount": 13,
-      "lastAccessed": 1777554897283,
+      "lastAccessed": 1777701760196,
       "keyFiles": [
         "__init__.py",
         "conftest.py",
@@ -93,6 +93,97 @@
       ]
     }
   },
-  "hotPaths": [],
+  "hotPaths": [
+    {
+      "path": "task_plan.md",
+      "accessCount": 2,
+      "lastAccessed": 1777702166630,
+      "type": "file"
+    },
+    {
+      "path": "findings.md",
+      "accessCount": 2,
+      "lastAccessed": 1777702167057,
+      "type": "file"
+    },
+    {
+      "path": "progress.md",
+      "accessCount": 2,
+      "lastAccessed": 1777702167447,
+      "type": "file"
+    },
+    {
+      "path": "README.md",
+      "accessCount": 2,
+      "lastAccessed": 1777702236614,
+      "type": "file"
+    },
+    {
+      "path": "src/web/package.json",
+      "accessCount": 1,
+      "lastAccessed": 1777702054013,
+      "type": "file"
+    },
+    {
+      "path": "src/web/questionView.ts",
+      "accessCount": 1,
+      "lastAccessed": 1777702068025,
+      "type": "file"
+    },
+    {
+      "path": "src/web/apiClient.ts",
+      "accessCount": 1,
+      "lastAccessed": 1777702068079,
+      "type": "file"
+    },
+    {
+      "path": "src/web/reportView.ts",
+      "accessCount": 1,
+      "lastAccessed": 1777702068133,
+      "type": "file"
+    },
+    {
+      "path": "src/web/main.ts",
+      "accessCount": 1,
+      "lastAccessed": 1777702068264,
+      "type": "file"
+    },
+    {
+      "path": ".env.example",
+      "accessCount": 1,
+      "lastAccessed": 1777702084433,
+      "type": "file"
+    },
+    {
+      "path": "src/personal_learning_coach/api/routes/auth.py",
+      "accessCount": 1,
+      "lastAccessed": 1777702084500,
+      "type": "file"
+    },
+    {
+      "path": "pyproject.toml",
+      "accessCount": 1,
+      "lastAccessed": 1777702084561,
+      "type": "file"
+    },
+    {
+      "path": "src/personal_learning_coach/api/routes/admin.py",
+      "accessCount": 1,
+      "lastAccessed": 1777702084616,
+      "type": "file"
+    },
+    {
+      "path": "src/personal_learning_coach/config.py",
+      "accessCount": 1,
+      "lastAccessed": 1777702140609,
+      "type": "file"
+    },
+    {
+      "path": "src/web/vite.config.ts",
+      "accessCount": 1,
+      "lastAccessed": 1777702140660,
+      "type": "file"
+    }
+  ],
   "userDirectives": []
 }

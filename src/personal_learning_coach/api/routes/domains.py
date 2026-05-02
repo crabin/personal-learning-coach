@@ -205,8 +205,7 @@ def list_domains(
     else:
         enrollments = data_store.domain_enrollments.filter(user_id=current_user.user_id)
         plans = data_store.learning_plans.filter(user_id=current_user.user_id)
-    seen_domains = {*(enrollment.domain for enrollment in enrollments), *(plan.domain for plan in plans)}
-    domains = sorted({*seen_domains, "ai_agent"})
+    domains = sorted({*(enrollment.domain for enrollment in enrollments), *(plan.domain for plan in plans)})
     return [DomainOptionResponse(domain=domain, label=_domain_label(domain)) for domain in domains]
 
 

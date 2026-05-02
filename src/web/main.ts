@@ -2,6 +2,7 @@ import "./styles.css";
 
 import { ApiError, LearningCoachApi, type ApiResponse } from "./apiClient";
 import { buildDraftDomainOption } from "./domainForm";
+import { buildDomainSelectState } from "./domainSelection";
 import {
   feedbackText,
   formatScore,
@@ -14,6 +15,24 @@ import {
   buildSubmissionAnswer as formatSubmissionAnswer,
   normalizeBasicQuestions,
 } from "./questionView";
+import {
+  createProjectBackgroundController,
+  getStoredProjectBackground,
+  getFirstPaletteForGroup,
+  getPaletteGroupForPalette,
+  getProjectPaletteColors,
+  getStoredProjectPalette,
+  PROJECT_PALETTE_GROUPS,
+  parseProjectBackgroundId,
+  parseProjectPaletteId,
+  PROJECT_BACKGROUND_PRESETS,
+  saveProjectBackground,
+  saveProjectPalette,
+  type ProjectBackgroundId,
+  type ProjectPaletteGroupId,
+  type ProjectPaletteId,
+} from "./projectBackground";
+import { buildReportExportFilename, serializeReportExport } from "./reportExport";
 import { emptyReport, renderReport, type ReportPayload, type ReportTopicRow } from "./reportView";
 
 type JsonValue = Record<string, unknown> | unknown[] | string | number | boolean | null;
@@ -88,6 +107,18 @@ interface AuthResponse {
   user: AuthUser;
 }
 
+interface RegisterCaptchaResponse {
+  captcha_id: string;
+  image_data_url: string;
+  expires_in_seconds: number;
+}
+
+interface RegisterStartResponse {
+  verification_id: string;
+  email: string;
+  expires_in_seconds: number;
+}
+
 interface AdminUser {
   user_id: string;
   name: string;
@@ -107,9 +138,13 @@ interface AdminDomain {
 }
 
 const DEFAULT_LEARNING_VISUAL = "/data/images/backgroud1.png";
+const NO_DOMAIN_MESSAGE = "你还没有创建学习领域，请先在学习目标页创建。";
 
 let currentView: ViewId = "goals";
 let currentUser: AuthUser | null = null;
+let currentAuthPage: "login" | "register" = "login";
+let currentRegisterCaptchaId = "";
+let currentRegisterVerificationId = "";
 let loadedQuestionContext = "";
 let pushRequestInFlight = false;
 let consoleVisible = false;
@@ -117,6 +152,8 @@ let currentBasicAnswerIds: string[] = [];
 let goalSummaryRequestId = 0;
 let questionSidebarRequestId = 0;
 let reportRequestId = 0;
+let hasExistingDomains = false;
+let currentReport: ReportPayload | null = null;
 
 const app = document.querySelector<HTMLDivElement>("#app");
 
@@ -125,6 +162,8 @@ if (!app) {
 }
 
 app.innerHTML = `
+  <div id="projectBackgroundHost" class="project-background" aria-hidden="true"></div>
+
   <section id="authShell" class="auth-shell" aria-labelledby="authTitle">
     <div class="auth-card">
       <div>
@@ -132,8 +171,8 @@ app.innerHTML = `
         <h1 id="authTitle">登录后进入学习系统</h1>
         <p>注册会创建普通学习用户；管理员账号由系统环境种子创建。</p>
       </div>
-      <div class="auth-grid">
-        <section>
+      <div class="auth-panels">
+        <section id="loginPanel" class="auth-panel">
           <h2>登录</h2>
           <label>
             邮箱
@@ -144,8 +183,12 @@ app.innerHTML = `
             <input id="loginPassword" type="password" autocomplete="current-password" />
           </label>
           <button id="loginButton" class="command primary full" type="button">登录</button>
+          <p class="auth-switch">
+            还没有账号？
+            <button id="showRegisterButton" class="auth-link-button" type="button">去注册</button>
+          </p>
         </section>
-        <section>
+        <section id="registerPanel" class="auth-panel" hidden>
           <h2>注册普通用户</h2>
           <label>
             姓名
@@ -159,7 +202,26 @@ app.innerHTML = `
             密码
             <input id="registerPassword" type="password" autocomplete="new-password" />
           </label>
-          <button id="registerButton" class="command full" type="button">注册并登录</button>
+          <label id="registerCaptchaLabel">
+            图片验证码
+            <span class="captcha-control">
+              <img id="registerCaptchaImage" class="captcha-image" alt="图片验证码" />
+              <button id="refreshRegisterCaptchaButton" class="command subtle" type="button">刷新</button>
+            </span>
+            <input id="registerCaptchaCode" autocomplete="off" inputmode="text" />
+          </label>
+          <label id="registerEmailCodeLabel" hidden>
+            邮箱验证码
+            <input id="registerEmailCode" autocomplete="one-time-code" inputmode="numeric" />
+          </label>
+          <button id="sendRegisterEmailButton" class="command full" type="button">发送邮箱验证码</button>
+          <button id="registerButton" class="command primary full" type="button" hidden>
+            完成注册并登录
+          </button>
+          <p class="auth-switch">
+            已有账号？
+            <button id="showLoginButton" class="auth-link-button" type="button">去登录</button>
+          </p>
         </section>
       </div>
       <p id="authMessage" class="auth-message" aria-live="polite"></p>
@@ -200,7 +262,7 @@ app.innerHTML = `
           <label class="config-field config-field-domain">
             <span>领域</span>
             <select id="domain">
-              <option value="ai_agent" selected>AI Agent</option>
+              <option value="" selected>没有领域</option>
             </select>
           </label>
           <label class="config-field admin-key">
@@ -261,7 +323,7 @@ app.innerHTML = `
           <div class="surface-heading">
             <div>
               <h3><span class="material-symbols-outlined">edit_note</span> 报名参数</h3>
-              <p class="surface-meta">当前学习领域：<strong id="currentDomainLabel">AI Agent</strong></p>
+              <p class="surface-meta">当前学习领域：<strong id="currentDomainLabel">没有领域</strong></p>
             </div>
           </div>
           <div class="form-grid">
@@ -326,7 +388,7 @@ app.innerHTML = `
           <article class="domain-card">
             <span>领域状态</span>
             <strong id="domainMasteryPercent">--%</strong>
-            <small>掌握：<span id="domainPreview">ai_agent</span></small>
+            <small>掌握：<span id="domainPreview">没有领域</span></small>
             <div id="goalProgressList" class="progress-list"></div>
           </article>
           <article class="active-domain">
@@ -466,7 +528,7 @@ app.innerHTML = `
             <span class="material-symbols-outlined">refresh</span>
             刷新数据
           </button>
-          <button class="command primary" type="button">
+          <button id="exportReportButton" class="command primary" type="button">
             <span class="material-symbols-outlined">file_download</span>
             导出 JSON
           </button>
@@ -487,6 +549,32 @@ app.innerHTML = `
         </button>
       </div>
       <div class="settings-layout">
+        <section class="work-surface background-settings-surface">
+          <div class="surface-heading">
+            <div>
+              <h3><span class="material-symbols-outlined">palette</span> 项目背景</h3>
+              <p>选择工作台的动态背景风格，仅保存在当前浏览器。</p>
+            </div>
+          </div>
+          <label class="project-background-picker">
+            背景风格
+            <select id="projectBackgroundSelect">
+              ${renderProjectBackgroundOptions()}
+            </select>
+          </label>
+          <label class="project-background-picker">
+            主颜色
+            <select id="projectPaletteGroupSelect">
+              ${renderProjectPaletteGroupOptions()}
+            </select>
+          </label>
+          <label class="project-background-picker">
+            颜色组合
+            <select id="projectPaletteSelect"></select>
+          </label>
+          <div id="projectPalettePreview" class="project-palette-preview" aria-label="当前颜色组合预览"></div>
+          <div id="projectBackgroundHint" class="project-background-hint" aria-live="polite"></div>
+        </section>
         <section class="work-surface">
           <div class="surface-heading">
             <div>
@@ -627,10 +715,12 @@ const api = new LearningCoachApi({
   baseUrl: getInput("apiBaseUrl").value,
   authToken: localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) ?? "",
 });
+const projectBackgroundController = createProjectBackgroundController(getProjectBackgroundHost());
 
 bindAuthActions();
 bindLearningVisualEvents();
 renderBasicQuestionFields([]);
+initializeProjectBackground();
 bindGlobalState();
 bindViews();
 bindActions();
@@ -638,7 +728,13 @@ void bootstrapSession();
 
 function bindAuthActions(): void {
   onClick("loginButton", login);
-  onClick("registerButton", register);
+  onClick("sendRegisterEmailButton", startRegister);
+  onClick("registerButton", completeRegister);
+  onClick("refreshRegisterCaptchaButton", () => {
+    void loadRegisterCaptcha();
+  });
+  onClick("showRegisterButton", () => showAuthPage("register"));
+  onClick("showLoginButton", () => showAuthPage("login"));
   onClick("logoutButton", logout);
 }
 
@@ -668,14 +764,40 @@ async function login(): Promise<void> {
   );
 }
 
-async function register(): Promise<void> {
-  await authenticate("registerButton", "注册并登录", "注册中...", () =>
-    api.request<AuthResponse>("/auth/register", {
+async function startRegister(): Promise<void> {
+  await withButtonLoading("sendRegisterEmailButton", "发送邮箱验证码", "发送中...", async () => {
+    try {
+      if (!currentRegisterCaptchaId) {
+        await loadRegisterCaptcha();
+      }
+      const response = await api.request<RegisterStartResponse>("/auth/register/start", {
+        method: "POST",
+        body: {
+          name: value("registerName"),
+          email: value("registerEmail"),
+          password: value("registerPassword"),
+          captcha_id: currentRegisterCaptchaId,
+          captcha_code: value("registerCaptchaCode"),
+        },
+      });
+      currentRegisterVerificationId = response.data.verification_id;
+      setRegisterVerificationMode(true);
+      text("authMessage", `验证码已发送到 ${response.data.email}。`);
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : String(error);
+      text("authMessage", message);
+      await loadRegisterCaptcha();
+    }
+  });
+}
+
+async function completeRegister(): Promise<void> {
+  await authenticate("registerButton", "完成注册并登录", "注册中...", () =>
+    api.request<AuthResponse>("/auth/register/complete", {
       method: "POST",
       body: {
-        name: value("registerName"),
-        email: value("registerEmail"),
-        password: value("registerPassword"),
+        verification_id: currentRegisterVerificationId,
+        email_code: value("registerEmailCode"),
       },
     }),
   );
@@ -748,7 +870,57 @@ function showAuthShell(message: string): void {
   document.querySelector<HTMLElement>("#authShell")!.hidden = false;
   document.querySelector<HTMLElement>("#appShell")!.hidden = true;
   document.querySelector<HTMLElement>(".config-bar")?.classList.remove("config-bar-admin");
+  showAuthPage(currentAuthPage, message);
+}
+
+function showAuthPage(page: "login" | "register", message = ""): void {
+  currentAuthPage = page;
+  const loginPanel = document.querySelector<HTMLElement>("#loginPanel");
+  const registerPanel = document.querySelector<HTMLElement>("#registerPanel");
+  if (loginPanel) {
+    loginPanel.hidden = page !== "login";
+  }
+  if (registerPanel) {
+    registerPanel.hidden = page !== "register";
+  }
   text("authMessage", message);
+  if (page === "register") {
+    resetRegisterFlow();
+    void loadRegisterCaptcha();
+  }
+}
+
+async function loadRegisterCaptcha(): Promise<void> {
+  try {
+    const response = await api.request<RegisterCaptchaResponse>("/auth/register/captcha");
+    currentRegisterCaptchaId = response.data.captcha_id;
+    const image = document.querySelector<HTMLImageElement>("#registerCaptchaImage");
+    if (image) {
+      image.src = response.data.image_data_url;
+    }
+    getInput("registerCaptchaCode").value = "";
+  } catch (error) {
+    const message = error instanceof ApiError ? error.message : String(error);
+    text("authMessage", message);
+  }
+}
+
+function resetRegisterFlow(): void {
+  currentRegisterVerificationId = "";
+  setRegisterVerificationMode(false);
+  getInput("registerCaptchaCode").value = "";
+  getInput("registerEmailCode").value = "";
+}
+
+function setRegisterVerificationMode(isVerifyingEmail: boolean): void {
+  currentRegisterCaptchaId = isVerifyingEmail ? currentRegisterCaptchaId : "";
+  ["registerName", "registerEmail", "registerPassword", "registerCaptchaCode"].forEach((id) => {
+    getInput(id).readOnly = isVerifyingEmail;
+  });
+  document.querySelector<HTMLElement>("#registerCaptchaLabel")!.hidden = isVerifyingEmail;
+  document.querySelector<HTMLElement>("#registerEmailCodeLabel")!.hidden = !isVerifyingEmail;
+  document.querySelector<HTMLElement>("#sendRegisterEmailButton")!.hidden = isVerifyingEmail;
+  document.querySelector<HTMLElement>("#registerButton")!.hidden = !isVerifyingEmail;
 }
 
 function isCurrentAdmin(): boolean {
@@ -758,6 +930,19 @@ function isCurrentAdmin(): boolean {
 function bindGlobalState(): void {
   onInput("apiBaseUrl", () => api.setBaseUrl(value("apiBaseUrl")));
   onInput("adminApiKey", () => api.setAdminApiKey(value("adminApiKey")));
+  onChange("projectBackgroundSelect", () => {
+    const selected = parseProjectBackgroundId(value("projectBackgroundSelect"));
+    applyProjectBackground(selected, currentProjectPalette(), true);
+  });
+  onChange("projectPaletteGroupSelect", () => {
+    const group = currentProjectPaletteGroup();
+    const palette = getFirstPaletteForGroup(group);
+    renderProjectPaletteOptions(group, palette);
+    applyProjectBackground(currentProjectBackground(), palette, true);
+  });
+  onChange("projectPaletteSelect", () => {
+    applyProjectBackground(currentProjectBackground(), currentProjectPalette(), true);
+  });
   onChange("customDomainLabel", syncCustomDomainDraft);
   onChange("domain", () => {
     syncPreview();
@@ -792,6 +977,7 @@ function bindActions(): void {
   onClick("pushButton", triggerPush);
   onClick("submitButton", submitAnswer);
   onClick("refreshReportButton", refreshReportPage);
+  onClick("exportReportButton", exportReportJson);
   onClick("pauseButton", () => lifecycle("pause"));
   onClick("resumeButton", () => lifecycle("resume"));
   onClick("archiveButton", () => lifecycle("archive"));
@@ -817,11 +1003,19 @@ function showView(view: ViewId): void {
     button.classList.toggle("active", button.dataset.view === view);
   });
   if (view === "reports") {
-    void refreshReportPage();
+    if (canUseExistingDomain()) {
+      void refreshReportPage();
+    } else {
+      renderNoDomainReport();
+    }
   }
   if (view === "questions") {
-    void ensureQuestionPushLoaded();
-    void syncQuestionSidebar();
+    if (canUseExistingDomain()) {
+      void ensureQuestionPushLoaded();
+      void syncQuestionSidebar();
+    } else {
+      renderNoDomainQuestionState();
+    }
   }
   if (view === "goals") {
     void syncGoalSummary();
@@ -855,11 +1049,16 @@ async function enrollDomain(): Promise<void> {
         },
       }),
     );
+    await syncAvailableDomains();
     await syncGoalSummary();
   });
 }
 
 async function getDomainStatus(): Promise<void> {
+  if (!domain()) {
+    renderNoDomainGoalSummary();
+    return;
+  }
   await withButtonLoading("statusButton", "查看状态", "同步中...", async () => {
     await runJson("领域状态", () =>
       api.request<JsonValue>(`/domains/${domain()}/status`, {
@@ -871,6 +1070,10 @@ async function getDomainStatus(): Promise<void> {
 }
 
 async function triggerPush(): Promise<void> {
+  if (!canUseExistingDomain()) {
+    renderNoDomainQuestionState();
+    return;
+  }
   if (pushRequestInFlight) {
     return;
   }
@@ -898,6 +1101,10 @@ async function triggerPush(): Promise<void> {
 }
 
 async function submitAnswer(): Promise<void> {
+  if (!canUseExistingDomain()) {
+    renderNoDomainQuestionState();
+    return;
+  }
   setEvaluationLoading(true);
   try {
     await withButtonLoading("submitButton", "提交并评估", "评估中...", async () => {
@@ -927,6 +1134,10 @@ async function submitAnswer(): Promise<void> {
 }
 
 async function loadReport(): Promise<void> {
+  if (!canUseExistingDomain()) {
+    renderNoDomainReport();
+    return;
+  }
   const requestId = ++reportRequestId;
   setPanelLoading("#reportContent", true);
   try {
@@ -958,41 +1169,45 @@ async function syncAvailableDomains(): Promise<void> {
   const customOption = currentDraftDomainOption();
   try {
     const response = await api.request<DomainOptionResponse[]>("/domains");
-    const options = response.data.length > 0 ? response.data : [{ domain: currentDomain, label: currentDomain }];
+    const state = buildDomainSelectState(response.data, currentDomain, customOption);
+    hasExistingDomains = state.hasExistingDomains;
     select.replaceChildren(
-      ...options.map((item) => {
+      ...state.options.map((item) => {
         const option = document.createElement("option");
         option.value = item.domain;
         option.textContent = item.label;
-        option.selected = item.domain === currentDomain;
+        option.selected = item.domain === state.selectedDomain;
         return option;
       }),
     );
-    if (customOption) {
-      upsertDomainOption(select, customOption);
-    }
-    if ([...select.options].some((item) => item.value === currentDomain)) {
-      select.value = currentDomain;
-    } else {
-      select.value = customOption?.domain ?? options[0]?.domain ?? "ai_agent";
-      syncPreview();
+    const domainChanged = currentDomain !== state.selectedDomain;
+    select.value = state.selectedDomain;
+    syncPreview();
+    if (domainChanged) {
       resetQuestionContext();
     }
   } catch {
     select.replaceChildren();
     const option = document.createElement("option");
-    option.value = currentDomain || "ai_agent";
-    option.textContent = currentDomain || "AI Agent";
+    option.value = currentDomain;
+    option.textContent = currentDomain || "没有领域";
     option.selected = true;
     select.append(option);
+    hasExistingDomains = currentDomain.length > 0;
     if (customOption) {
       upsertDomainOption(select, customOption);
       select.value = currentDomain || customOption.domain;
     }
+    syncPreview();
   }
 }
 
 async function refreshReportPage(): Promise<void> {
+  if (!canUseExistingDomain()) {
+    renderNoDomainReport();
+    return;
+  }
+  currentReport = null;
   getReportContent().innerHTML = emptyReport("正在同步学习报告...");
   await withButtonLoading("refreshReportButton", "刷新数据", "同步中...", async () => {
     await loadReport();
@@ -1000,7 +1215,44 @@ async function refreshReportPage(): Promise<void> {
   });
 }
 
+async function exportReportJson(): Promise<void> {
+  if (!canUseExistingDomain()) {
+    renderNoDomainReport();
+    return;
+  }
+  await withButtonLoading("exportReportButton", "导出 JSON", "导出中...", async () => {
+    const report = currentReport ?? (await fetchReportForExport());
+    downloadReportJson(report);
+    text("reportSyncStatus", `JSON 已导出：${buildReportExportFilename(report)}`);
+  });
+}
+
+async function fetchReportForExport(): Promise<ReportPayload> {
+  text("reportSyncStatus", "正在准备导出数据...");
+  const response = await api.request<ReportPayload>(`/reports/${domain()}`, {
+    query: { user_id: userId() },
+  });
+  renderReportContent(response.data);
+  return response.data;
+}
+
+function downloadReportJson(data: ReportPayload): void {
+  const blob = new Blob([serializeReportExport(data)], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = buildReportExportFilename(data);
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 async function syncReportDomainStatus(): Promise<void> {
+  if (!canUseExistingDomain()) {
+    renderNoDomainReport();
+    return;
+  }
   try {
     const response = await api.request<DomainStatusResponse>(`/domains/${domain()}/status`, {
       query: { user_id: userId() },
@@ -1283,6 +1535,7 @@ function renderEvaluation(data: SubmitResponse): void {
 }
 
 function renderReportContent(data: ReportPayload): void {
+  currentReport = data;
   getReportContent().innerHTML = renderReport(data);
 }
 
@@ -1301,12 +1554,20 @@ function syncDangerButtons(): void {
 }
 
 function syncPreview(): void {
-  text("domainPreview", domain());
+  text("domainPreview", domain() || "没有领域");
   text("currentDomainLabel", selectedDomainLabel());
   void syncGoalSummary();
-  void syncQuestionSidebar();
+  if (canUseExistingDomain()) {
+    void syncQuestionSidebar();
+  } else {
+    renderNoDomainQuestionState();
+  }
   if (currentView === "reports") {
-    void refreshReportPage();
+    if (canUseExistingDomain()) {
+      void refreshReportPage();
+    } else {
+      renderNoDomainReport();
+    }
   }
   if (currentView === "settings") {
     void loadSettingsPage();
@@ -1331,6 +1592,10 @@ function syncCustomDomainDraft(): void {
 }
 
 async function syncGoalSummary(): Promise<void> {
+  if (!domain()) {
+    renderNoDomainGoalSummary();
+    return;
+  }
   const requestId = ++goalSummaryRequestId;
   setPanelLoading(".domain-card", true);
   setPanelLoading(".active-domain", true);
@@ -1354,7 +1619,7 @@ async function syncGoalSummary(): Promise<void> {
       target_level: "beginner",
       mastery_percent: 0,
       avg_score: 0,
-      active_topic_title: domain(),
+      active_topic_title: domain() || "没有领域",
       active_topic_id: "",
       topic_progress: [],
     });
@@ -1367,6 +1632,10 @@ async function syncGoalSummary(): Promise<void> {
 }
 
 async function syncQuestionSidebar(): Promise<void> {
+  if (!canUseExistingDomain()) {
+    renderNoDomainQuestionState();
+    return;
+  }
   const requestId = ++questionSidebarRequestId;
   setQuestionSidebarLoading(true);
   try {
@@ -1412,6 +1681,10 @@ async function syncQuestionSidebar(): Promise<void> {
 }
 
 function ensureQuestionPushLoaded(): Promise<void> | void {
+  if (!canUseExistingDomain()) {
+    renderNoDomainQuestionState();
+    return;
+  }
   if (pushRequestInFlight) {
     return;
   }
@@ -1481,6 +1754,46 @@ function renderLearningVisual(visualUrl: string): void {
   if (image.complete && image.naturalWidth > 0) {
     card.dataset.state = "ready";
   }
+}
+
+function renderNoDomainGoalSummary(): void {
+  renderGoalSummary({
+    domain: "没有领域",
+    user_id: userId(),
+    status: "not_started",
+    current_level: "beginner",
+    target_level: "beginner",
+    mastery_percent: 0,
+    avg_score: 0,
+    active_topic_title: NO_DOMAIN_MESSAGE,
+    active_topic_id: "",
+    topic_progress: [],
+  });
+}
+
+function renderNoDomainQuestionState(): void {
+  setQuestionContentLoading(false);
+  renderQuestionContent({ push_id: null, delivered: false, message: NO_DOMAIN_MESSAGE });
+  text("questionDebugMetric", "> 最近掌握估计：没有领域");
+  text("questionDebugAction", "> 下一步：先创建学习领域");
+  const masteryList = document.querySelector<HTMLDivElement>("#questionMasteryList");
+  if (!masteryList) {
+    throw new Error("Question mastery list not found");
+  }
+  const row = document.createElement("article");
+  row.className = "question-mastery-item";
+  const title = document.createElement("span");
+  title.className = "question-mastery-title";
+  title.textContent = NO_DOMAIN_MESSAGE;
+  row.append(title);
+  masteryList.replaceChildren(row);
+}
+
+function renderNoDomainReport(): void {
+  currentReport = null;
+  getReportContent().innerHTML = emptyReport(NO_DOMAIN_MESSAGE);
+  text("reportSyncStatus", "没有学习领域");
+  setPanelLoading("#reportContent", false);
 }
 
 function renderGoalSummary(data: DomainSummaryResponse): void {
@@ -1591,6 +1904,149 @@ function renderSettingsProfile(domainCount: number): void {
   });
 
   container.replaceChildren(profile, metrics);
+}
+
+function initializeProjectBackground(): void {
+  const storedPalette = getStoredProjectPalette();
+  const storedGroup = getPaletteGroupForPalette(storedPalette)?.id ?? PROJECT_PALETTE_GROUPS[0].id;
+  getProjectPaletteGroupSelect().value = storedGroup;
+  renderProjectPaletteOptions(storedGroup, storedPalette);
+  applyProjectBackground(getStoredProjectBackground(), storedPalette, false);
+}
+
+function applyProjectBackground(id: ProjectBackgroundId, paletteId: ProjectPaletteId, persist: boolean): void {
+  const selected = projectBackgroundController.apply(id, paletteId);
+  const palette = parseProjectPaletteId(paletteId);
+  const select = getProjectBackgroundSelect();
+  select.value = selected;
+  getProjectPaletteSelect().value = palette;
+  renderProjectPalettePreview(palette);
+  applyProjectPaletteTheme(palette);
+  if (persist) {
+    saveProjectBackground(selected);
+    saveProjectPalette(palette);
+  }
+  const preset = PROJECT_BACKGROUND_PRESETS.find((item) => item.id === selected);
+  const paletteLabel = PROJECT_PALETTE_GROUPS.flatMap((group) => group.palettes).find(
+    (item) => item.id === palette,
+  )?.label;
+  text("projectBackgroundHint", `${preset?.description ?? "已应用项目背景。"} 当前组合：${paletteLabel ?? "默认色板"}`);
+}
+
+function applyProjectPaletteTheme(paletteId: ProjectPaletteId): void {
+  const colors = getProjectPaletteColors(paletteId);
+  const [primary, secondary, soft, surface, accent, glow] = colors;
+  const root = document.documentElement;
+  root.style.setProperty("--primary", primary ?? "#004ac6");
+  root.style.setProperty("--primary-bright", secondary ?? "#2563eb");
+  root.style.setProperty("--primary-soft", soft ?? "#dbe1ff");
+  root.style.setProperty("--secondary-soft", surface ?? "#eaddff");
+  root.style.setProperty("--tertiary", accent ?? "#bc4800");
+  root.style.setProperty("--palette-glow", glow ?? secondary ?? "#7dd5ff");
+  root.style.setProperty("--palette-glow-rgb", hexToRgb(glow ?? secondary ?? "#7dd5ff"));
+  root.style.setProperty("--palette-primary-rgb", hexToRgb(primary ?? "#004ac6"));
+}
+
+function renderProjectBackgroundOptions(): string {
+  return PROJECT_BACKGROUND_PRESETS.map(
+    (preset) => `<option value="${preset.id}">${preset.label}</option>`,
+  ).join("");
+}
+
+function renderProjectPaletteGroupOptions(): string {
+  return PROJECT_PALETTE_GROUPS.map(
+    (group) => `<option value="${group.id}">${group.label}</option>`,
+  ).join("");
+}
+
+function renderProjectPaletteOptions(groupId: ProjectPaletteGroupId, selectedPalette: ProjectPaletteId): void {
+  const group = PROJECT_PALETTE_GROUPS.find((item) => item.id === groupId) ?? PROJECT_PALETTE_GROUPS[0];
+  const select = getProjectPaletteSelect();
+  select.replaceChildren(
+    ...group.palettes.map((palette) => {
+      const option = document.createElement("option");
+      option.value = palette.id;
+      option.textContent = palette.label;
+      option.selected = palette.id === selectedPalette;
+      return option;
+    }),
+  );
+}
+
+function renderProjectPalettePreview(paletteId: ProjectPaletteId): void {
+  const palette = PROJECT_PALETTE_GROUPS.flatMap((group) => group.palettes).find(
+    (item) => item.id === paletteId,
+  );
+  const container = document.querySelector<HTMLDivElement>("#projectPalettePreview");
+  if (!container) {
+    throw new Error("Project palette preview not found");
+  }
+  container.replaceChildren(
+    ...(palette?.colors ?? []).map((color) => {
+      const swatch = document.createElement("span");
+      swatch.style.background = color;
+      return swatch;
+    }),
+  );
+}
+
+function getProjectBackgroundHost(): HTMLElement {
+  const element = document.querySelector<HTMLElement>("#projectBackgroundHost");
+  if (!element) {
+    throw new Error("Project background host not found");
+  }
+  return element;
+}
+
+function getProjectBackgroundSelect(): HTMLSelectElement {
+  const element = document.querySelector<HTMLSelectElement>("#projectBackgroundSelect");
+  if (!element) {
+    throw new Error("Project background select not found");
+  }
+  return element;
+}
+
+function getProjectPaletteGroupSelect(): HTMLSelectElement {
+  const element = document.querySelector<HTMLSelectElement>("#projectPaletteGroupSelect");
+  if (!element) {
+    throw new Error("Project palette group select not found");
+  }
+  return element;
+}
+
+function getProjectPaletteSelect(): HTMLSelectElement {
+  const element = document.querySelector<HTMLSelectElement>("#projectPaletteSelect");
+  if (!element) {
+    throw new Error("Project palette select not found");
+  }
+  return element;
+}
+
+function currentProjectBackground(): ProjectBackgroundId {
+  return parseProjectBackgroundId(value("projectBackgroundSelect"));
+}
+
+function currentProjectPaletteGroup(): ProjectPaletteGroupId {
+  const selected = value("projectPaletteGroupSelect");
+  return PROJECT_PALETTE_GROUPS.some((group) => group.id === selected)
+    ? (selected as ProjectPaletteGroupId)
+    : PROJECT_PALETTE_GROUPS[0].id;
+}
+
+function currentProjectPalette(): ProjectPaletteId {
+  return parseProjectPaletteId(value("projectPaletteSelect"));
+}
+
+function hexToRgb(hex: string): string {
+  const normalized = hex.replace("#", "");
+  const value = normalized.length === 3
+    ? normalized.split("").map((part) => `${part}${part}`).join("")
+    : normalized;
+  const parsed = Number.parseInt(value, 16);
+  if (Number.isNaN(parsed)) {
+    return "0, 74, 198";
+  }
+  return `${(parsed >> 16) & 255}, ${(parsed >> 8) & 255}, ${parsed & 255}`;
 }
 
 function renderSettingsDomains(
@@ -1910,12 +2366,16 @@ function domain(): string {
   return value("domain").trim();
 }
 
+function canUseExistingDomain(): boolean {
+  return hasExistingDomains && domain().length > 0;
+}
+
 function selectedDomainLabel(): string {
   const select = document.querySelector<HTMLSelectElement>("#domain");
   if (!select) {
-    return domain();
+    return domain() || "没有领域";
   }
-  return select.selectedOptions[0]?.textContent?.trim() || domain();
+  return select.selectedOptions[0]?.textContent?.trim() || domain() || "没有领域";
 }
 
 function currentDraftDomainOption(): DomainOptionResponse | null {

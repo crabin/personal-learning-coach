@@ -21,6 +21,8 @@ from personal_learning_coach.models import (
     LearningPlan,
     PushRecord,
     QuestionHistoryRecord,
+    RegistrationCaptchaChallenge,
+    RegistrationEmailChallenge,
     RuntimeEvent,
     SubmissionRecord,
     TopicProgress,
@@ -300,6 +302,8 @@ def _matches(record: BaseModel, criteria: dict[str, Any]) -> bool:
 STORE_MODELS: dict[str, type[BaseModel]] = {
     "user_profiles": UserProfile,
     "auth_sessions": AuthSession,
+    "registration_captcha_challenges": RegistrationCaptchaChallenge,
+    "registration_email_challenges": RegistrationEmailChallenge,
     "domain_enrollments": DomainEnrollment,
     "learning_plans": LearningPlan,
     "topic_progress": TopicProgress,
@@ -321,6 +325,12 @@ JSON_COLLECTIONS: dict[str, _Store[BaseModel]] = {
 
 user_profiles = _Store("user_profiles.json", UserProfile)
 auth_sessions = _Store("auth_sessions.json", AuthSession)
+registration_captcha_challenges = _Store(
+    "registration_captcha_challenges.json", RegistrationCaptchaChallenge
+)
+registration_email_challenges = _Store(
+    "registration_email_challenges.json", RegistrationEmailChallenge
+)
 domain_enrollments = _Store("domain_enrollments.json", DomainEnrollment)
 learning_plans = _Store("learning_plans.json", LearningPlan)
 topic_progress = _Store("topic_progress.json", TopicProgress)

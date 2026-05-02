@@ -13,5 +13,8 @@
     "typescript": "^5.9.3",
     "vite": "^7.3.0",
     "vitest": "^4.0.15"
+  },
+  "dependencies": {
+    "color4bg": "^0.1.1"
   }
 }

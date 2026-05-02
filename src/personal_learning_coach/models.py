@@ -89,6 +89,29 @@ class AuthSession(BaseModel):
     created_at: datetime = Field(default_factory=_now)
 
 
+class RegistrationCaptchaChallenge(BaseModel):
+    """Short-lived image captcha challenge for registration."""
+
+    captcha_id: str = Field(default_factory=_uuid)
+    code_hash: str
+    expires_at: datetime
+    attempts: int = 0
+    created_at: datetime = Field(default_factory=_now)
+
+
+class RegistrationEmailChallenge(BaseModel):
+    """Pending registration gated by an emailed verification code."""
+
+    verification_id: str = Field(default_factory=_uuid)
+    name: str
+    email: str
+    password_hash: str
+    code_hash: str
+    expires_at: datetime
+    attempts: int = 0
+    created_at: datetime = Field(default_factory=_now)
+
+
 class DomainEnrollment(BaseModel):
     """A learner's enrollment in a specific learning domain."""
 

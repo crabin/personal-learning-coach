@@ -22,6 +22,15 @@ class AppConfig(BaseModel):
     admin_seed_email: str = ""
     admin_seed_password: str = ""
     admin_seed_name: str = "System Admin"
+    smtp_host: str = ""
+    smtp_port: int = 465
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = ""
+    smtp_from_name: str = "Personal Learning Coach"
+    smtp_use_ssl: bool = True
+    smtp_use_tls: bool = False
+    smtp_timeout_seconds: int = 10
     backup_dir: Path = Path("./data/backups")
 
     @field_validator("delivery_mode")
@@ -41,6 +50,18 @@ class AppConfig(BaseModel):
                 issues.append("TELEGRAM_CHAT_ID is required when DELIVERY_MODE=telegram")
         return issues
 
+    def validate_smtp(self) -> list[str]:
+        issues: list[str] = []
+        if not self.smtp_host:
+            issues.append("SMTP_HOST is required to send registration email codes")
+        if not self.smtp_username:
+            issues.append("SMTP_USERNAME is required to send registration email codes")
+        if not self.smtp_password:
+            issues.append("SMTP_PASSWORD is required to send registration email codes")
+        if not self.smtp_from_email:
+            issues.append("SMTP_FROM_EMAIL is required to send registration email codes")
+        return issues
+
 
 def load_config() -> AppConfig:
     try:
@@ -58,7 +79,23 @@ def load_config() -> AppConfig:
             admin_seed_email=os.environ.get("ADMIN_SEED_EMAIL", ""),
             admin_seed_password=os.environ.get("ADMIN_SEED_PASSWORD", ""),
             admin_seed_name=os.environ.get("ADMIN_SEED_NAME", "System Admin"),
+            smtp_host=os.environ.get("SMTP_HOST", ""),
+            smtp_port=int(os.environ.get("SMTP_PORT", "465")),
+            smtp_username=os.environ.get("SMTP_USERNAME", ""),
+            smtp_password=os.environ.get("SMTP_PASSWORD", ""),
+            smtp_from_email=os.environ.get("SMTP_FROM_EMAIL", ""),
+            smtp_from_name=os.environ.get("SMTP_FROM_NAME", "Personal Learning Coach"),
+            smtp_use_ssl=_env_bool("SMTP_USE_SSL", True),
+            smtp_use_tls=_env_bool("SMTP_USE_TLS", False),
+            smtp_timeout_seconds=int(os.environ.get("SMTP_TIMEOUT_SECONDS", "10")),
             backup_dir=Path(os.environ.get("BACKUP_DIR", "./data/backups")),
         )
     except ValidationError as exc:
         raise ValueError(str(exc)) from exc
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}

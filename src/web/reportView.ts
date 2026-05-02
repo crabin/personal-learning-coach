@@ -61,21 +61,27 @@ export function renderReport(data: ReportPayload): string {
           <h3>主题明细</h3>
           <span class="report-generated">更新于 ${formatDate(data.generated_at)}</span>
         </div>
-        ${renderTopicTable(data.topic_rows)}
+        <div class="report-section-body report-table-shell">
+          ${renderTopicTable(data.topic_rows)}
+        </div>
       </section>
       <section class="report-section insight-band">
         <h3>学习进度</h3>
-        <p>${escapeHtml(data.insights.stage_summary)}</p>
-        <div class="insight-grid">
-          ${insight("趋势", data.insights.score_trend)}
-          ${insight("强项", listText(data.insights.top_strengths))}
-          ${insight("弱项", listText(data.insights.top_weaknesses))}
-          ${insight("常错概念", listText(data.insights.common_missed_concepts))}
+        <div class="report-section-body">
+          <p>${escapeHtml(data.insights.stage_summary)}</p>
+          <div class="insight-grid">
+            ${insight("趋势", data.insights.score_trend)}
+            ${insight("强项", listText(data.insights.top_strengths))}
+            ${insight("弱项", listText(data.insights.top_weaknesses))}
+            ${insight("常错概念", listText(data.insights.common_missed_concepts))}
+          </div>
         </div>
       </section>
       <section class="report-section">
         <h3>近期评估</h3>
-        ${renderEvaluations(data.recent_evals)}
+        <div class="report-section-body report-evaluations-shell">
+          ${renderEvaluations(data.recent_evals)}
+        </div>
       </section>
     </section>
   `;
