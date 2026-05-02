@@ -7,8 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from personal_learning_coach import coach, data_store
-from personal_learning_coach.models import DomainEnrollment, DomainStatus, LearningPlan
+from personal_learning_coach.entrypoints import cli as coach
+from personal_learning_coach.infrastructure import data_store
+from personal_learning_coach.domain.models import DomainEnrollment, DomainStatus, LearningPlan
 
 
 def test_plan_command_passes_preferences(
@@ -25,7 +26,7 @@ def test_plan_command_passes_preferences(
         enrollment = DomainEnrollment(user_id=user_id, domain=domain, level=level, status=DomainStatus.ACTIVE)
         return enrollment, plan
 
-    import personal_learning_coach.plan_generator as plan_generator
+    import personal_learning_coach.application.learning.plan_generator as plan_generator
 
     monkeypatch.setattr(plan_generator, "enroll_domain", fake_enroll_domain)
     monkeypatch.setattr(

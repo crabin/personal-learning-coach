@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from personal_learning_coach import data_store
-from personal_learning_coach.migrations import migrate_all, migrate_file
-from personal_learning_coach.models import LearnerLevel, LearningPlan, TopicNode, UserProfile
+from personal_learning_coach.infrastructure import data_store
+from personal_learning_coach.infrastructure.migrations import migrate_all, migrate_file
+from personal_learning_coach.domain.models import LearnerLevel, LearningPlan, TopicNode, UserProfile
 
 
 def test_migrate_file_skips_missing(tmp_path: Path) -> None:

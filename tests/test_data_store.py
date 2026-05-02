@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from personal_learning_coach.data_store import _Store
-from personal_learning_coach.models import DomainEnrollment, UserProfile
+from personal_learning_coach.infrastructure.data_store import _Store
+from personal_learning_coach.domain.models import DomainEnrollment, UserProfile
 
 
 def test_save_and_get(tmp_data_dir: Path) -> None:

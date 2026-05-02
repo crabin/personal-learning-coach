@@ -8,14 +8,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from personal_learning_coach import data_store
-from personal_learning_coach.content_pusher import (
+from personal_learning_coach.infrastructure import data_store
+from personal_learning_coach.application.learning.content_pusher import (
     generate_push_content,
     push_today,
     select_next_topic,
 )
-from personal_learning_coach.delivery.base import DeliveryAdapter
-from personal_learning_coach.models import (
+from personal_learning_coach.infrastructure.delivery.base import DeliveryAdapter
+from personal_learning_coach.domain.models import (
     AssessmentRecord,
     DomainEnrollment,
     DomainStatus,
@@ -28,7 +28,7 @@ from personal_learning_coach.models import (
     TopicProgress,
     TopicStatus,
 )
-from personal_learning_coach.online_resource import OnlineResourceService
+from personal_learning_coach.application.learning.online_resource import OnlineResourceService
 
 
 class _CapturingDelivery(DeliveryAdapter):
@@ -556,7 +556,7 @@ def test_push_today_degrades_when_online_resource_fetch_fails(tmp_data_dir: Path
 
 
 def test_local_delivery_writes_file(tmp_data_dir: Path) -> None:
-    from personal_learning_coach.delivery.local import LocalDelivery
+    from personal_learning_coach.infrastructure.delivery.local import LocalDelivery
 
     output_dir = tmp_data_dir / "pushes"
     adapter = LocalDelivery(output_dir=output_dir)
@@ -577,7 +577,7 @@ def test_local_delivery_writes_file(tmp_data_dir: Path) -> None:
 
 
 def test_local_delivery_renders_resource_block(tmp_data_dir: Path) -> None:
-    from personal_learning_coach.delivery.local import LocalDelivery
+    from personal_learning_coach.infrastructure.delivery.local import LocalDelivery
 
     output_dir = tmp_data_dir / "pushes"
     adapter = LocalDelivery(output_dir=output_dir)

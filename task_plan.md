@@ -28,7 +28,7 @@
 ## 阶段任务
 
 ### Phase 14: 前后端代码分层目录整理
-状态：`in_progress`
+状态：`complete`
 
 目标：
 - 后端按领域模型、应用服务、基础设施、入口层重新归类文件
@@ -39,6 +39,13 @@
 - Python import、ruff、mypy 和后端测试通过
 - 前端测试与构建通过
 - 新目录结构能清楚区分前端、后端，以及各功能/职责分层
+
+完成情况：
+- 后端已整理为 `domain/`、`application/assessment/`、`application/learning/`、`infrastructure/`、`entrypoints/`
+- API 入口已移动到 `entrypoints/api/`，CLI 已移动到 `entrypoints/cli.py`
+- 前端已整理为 `src/api/`、`src/features/`、`src/shared/`、`src/styles/`、`src/tests/`、`src/types/`
+- 已同步更新 Python、TypeScript、测试和构建入口的 import 路径
+- 已完成验证：`env SMTP_HOST= SMTP_PORT=465 SMTP_USERNAME= SMTP_PASSWORD= SMTP_FROM_EMAIL= uv run pytest -q` 134 passed，`uv run ruff check .` 通过，`uv run mypy src` 通过，`npm test -- --run` 34 passed，`npm run build` 通过
 
 ### Phase 13: 隐形学习意图分类与风格化生成
 状态：`complete`

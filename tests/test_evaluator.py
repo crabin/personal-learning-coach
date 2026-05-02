@@ -6,14 +6,14 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from personal_learning_coach import data_store
-from personal_learning_coach.evaluator import _compute_overall, evaluate_submission
-from personal_learning_coach.mastery_engine import (
+from personal_learning_coach.infrastructure import data_store
+from personal_learning_coach.application.assessment.evaluator import _compute_overall, evaluate_submission
+from personal_learning_coach.application.learning.mastery_engine import (
     apply_evaluation,
     complete_final_assessment,
     recalculate_mastery,
 )
-from personal_learning_coach.models import (
+from personal_learning_coach.domain.models import (
     DomainEnrollment,
     DomainStatus,
     EvaluationRecord,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from personal_learning_coach.learning_intent import classify_learning_intent
+from personal_learning_coach.application.learning.learning_intent import classify_learning_intent
 
 
 def _mock_client(response_text: str) -> MagicMock:

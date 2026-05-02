@@ -5,8 +5,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from personal_learning_coach import data_store
-from personal_learning_coach.models import (
+from personal_learning_coach.infrastructure import data_store
+from personal_learning_coach.domain.models import (
     EvaluationRecord,
     LearnerLevel,
     LearningPlan,
@@ -14,7 +14,7 @@ from personal_learning_coach.models import (
     TopicProgress,
     TopicStatus,
 )
-from personal_learning_coach.review_engine import (
+from personal_learning_coach.application.learning.review_engine import (
     generate_weekly_summary,
     get_due_reviews,
     reset_to_ready,

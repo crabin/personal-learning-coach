@@ -12,10 +12,10 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from personal_learning_coach.api.routes import auth as auth_routes
-from personal_learning_coach.api.main import app
-from personal_learning_coach import data_store
-from personal_learning_coach.models import (
+from personal_learning_coach.entrypoints.api.routes import auth as auth_routes
+from personal_learning_coach.entrypoints.api.main import app
+from personal_learning_coach.infrastructure import data_store
+from personal_learning_coach.domain.models import (
     DomainEnrollment,
     DomainStatus,
     EvaluationRecord,
@@ -31,8 +31,8 @@ from personal_learning_coach.models import (
     UserProfile,
     UserRole,
 )
-from personal_learning_coach.security import create_session, hash_password
-from personal_learning_coach.registration_verification import hash_verification_code
+from personal_learning_coach.infrastructure.security import create_session, hash_password
+from personal_learning_coach.infrastructure.registration_verification import hash_verification_code
 
 client = TestClient(app)
 
@@ -62,7 +62,7 @@ def _admin_headers(user_id: str = "admin") -> dict[str, str]:
 
 def _mock_enroll(monkeypatch: pytest.MonkeyPatch) -> None:
     """Patch enroll_domain to avoid Claude API calls."""
-    from personal_learning_coach import plan_generator
+    from personal_learning_coach.application.learning import plan_generator
 
     def fake_enroll(user_id, domain, level, preferences=None, client=None):
         t = TopicNode(title="Mock Topic", order=0)
@@ -569,8 +569,8 @@ def test_trigger_push_no_plan(tmp_data_dir: Path) -> None:
 def test_trigger_push_returns_generated_question_content(
     tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from personal_learning_coach import content_pusher
-    from personal_learning_coach.models import PushRecord
+    from personal_learning_coach.application.learning import content_pusher
+    from personal_learning_coach.domain.models import PushRecord
 
     fake_push = PushRecord(
         user_id="u1",
@@ -606,8 +606,8 @@ def test_trigger_push_returns_generated_question_content(
 def test_trigger_push_falls_back_to_local_learning_visual(
     tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from personal_learning_coach import content_pusher
-    from personal_learning_coach.models import PushRecord
+    from personal_learning_coach.application.learning import content_pusher
+    from personal_learning_coach.domain.models import PushRecord
 
     image_path = tmp_data_dir / "images" / "fallback.png"
     image_path.parent.mkdir(parents=True, exist_ok=True)
@@ -703,7 +703,7 @@ def test_get_report(tmp_data_dir: Path) -> None:
 
 
 def test_submit_answer(tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from personal_learning_coach.models import EvaluationRecord
+    from personal_learning_coach.domain.models import EvaluationRecord
 
     push = PushRecord(
         user_id="u1", topic_id="t1", domain="ai_agent",
@@ -721,7 +721,7 @@ def test_submit_answer(tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> N
         overall_score=82.0, next_action="continue", llm_feedback="Great answer."
     )
 
-    from personal_learning_coach.api.routes import submissions as sub_mod
+    from personal_learning_coach.entrypoints.api.routes import submissions as sub_mod
     monkeypatch.setattr(sub_mod, "evaluate_submission", lambda *a, **kw: fake_eval)
 
     resp = client.post(

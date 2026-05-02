@@ -300,6 +300,25 @@
 - 后端根目录职责混杂，但已有 API routes 和 delivery 子目录可保留作为分层基础。
 - 前端根目录混有业务 helper、测试、样式和构建配置，适合先做路径分层，不拆分大文件业务逻辑。
 
+已完成：
+- 后端领域模型移动到 `src/personal_learning_coach/domain/models.py`
+- 后端学习/评估业务服务移动到 `src/personal_learning_coach/application/assessment/` 与 `src/personal_learning_coach/application/learning/`
+- 后端配置、存储、迁移、备份、监控、安全、邮件、LLM client、投递适配器移动到 `src/personal_learning_coach/infrastructure/`
+- 后端 API 与 CLI 入口移动到 `src/personal_learning_coach/entrypoints/`
+- 前端源码移动到 `src/web/src/`，并按 API、features、shared、styles、tests、types 分层
+- 已更新 `pyproject.toml` console script、`src/web/index.html` Vite 入口、`src/web/tsconfig.json` include，以及后端/前端测试 import
+
+错误记录：
+- 首次前端测试失败：`authRegistration.test.ts` 仍从旧 `./authRegistration` 路径导入。已改为 `../features/auth/authRegistration`。
+- 首次后端全量测试失败：`test_api.py` 中少数 monkeypatch 仍从包根导入 `plan_generator` 和 `content_pusher`。已改为新 application 路径。
+
+验证：
+- `uv run ruff check .`：通过
+- `uv run mypy src`：通过
+- `env SMTP_HOST= SMTP_PORT=465 SMTP_USERNAME= SMTP_PASSWORD= SMTP_FROM_EMAIL= uv run pytest -q`：134 passed
+- `npm test -- --run`：34 passed
+- `npm run build`：通过
+
 ### Session 2026-05-02 empty-domain guard after registration
 
 已完成：

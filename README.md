@@ -144,7 +144,14 @@ TELEGRAM_CHAT_ID=...
 ### 1. 启动后端 API
 
 ```bash
-uv run uvicorn personal_learning_coach.api.main:app --reload
+uv run coach-api
+```
+
+旧入口 `personal_learning_coach.api.main:app` 仍保留兼容。
+默认后端会绑定到 `127.0.0.1:8000`，仅允许本机访问；局域网内设备通过前端开发服务器代理访问后端。可以通过环境变量覆盖：
+
+```bash
+API_HOST=0.0.0.0 API_PORT=8000 API_RELOAD=true uv run coach-api
 ```
 
 启动后可访问：
@@ -162,9 +169,9 @@ npm run dev
 
 默认前端地址：
 
-- Web 工作台：`http://127.0.0.1:5173`
+- Web 工作台：`http://127.0.0.1:5173` 或 `http://<本机局域网 IP>:5173`
 
-前端开发服务器已经内置代理，默认会把这些请求转发到 `http://127.0.0.1:8000`：
+前端开发服务器默认绑定到 `0.0.0.0:5173`，允许局域网内设备访问，并内置代理把这些请求转发到本机后端 `http://127.0.0.1:8000`：
 
 - `/health`
 - `/auth`
@@ -179,6 +186,12 @@ npm run dev
 
 ```bash
 VITE_API_PROXY_TARGET=http://127.0.0.1:8000 npm run dev
+```
+
+如果局域网访问时提示 host 不被允许，可以把本机名加入允许列表：
+
+```bash
+VITE_ALLOWED_HOSTS=crabins-macbook npm run dev
 ```
 
 ## 前端使用说明

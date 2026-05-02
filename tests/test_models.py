@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from personal_learning_coach.models import (
+from personal_learning_coach.domain.models import (
     AssessmentRecord,
     DimensionScore,
     DomainEnrollment,
@@ -17,7 +17,7 @@ from personal_learning_coach.models import (
     TopicStatus,
     UserProfile,
 )
-from personal_learning_coach.online_resource import OnlineResourceService
+from personal_learning_coach.application.learning.online_resource import OnlineResourceService
 
 
 def test_user_profile_round_trip() -> None:
@@ -165,7 +165,7 @@ def test_online_resource_service_dedupes_and_caches() -> None:
 
 
 def test_telegram_delivery_raises_without_required_env() -> None:
-    from personal_learning_coach.delivery.telegram import TelegramDelivery
+    from personal_learning_coach.infrastructure.delivery.telegram import TelegramDelivery
 
     try:
         TelegramDelivery(bot_token="", chat_id="")
@@ -178,7 +178,7 @@ def test_telegram_delivery_raises_without_required_env() -> None:
 def test_telegram_delivery_posts_message() -> None:
     import httpx
 
-    from personal_learning_coach.delivery.telegram import TelegramDelivery
+    from personal_learning_coach.infrastructure.delivery.telegram import TelegramDelivery
 
     requests: list[httpx.Request] = []
 

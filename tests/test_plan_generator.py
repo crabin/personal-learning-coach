@@ -6,14 +6,14 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from personal_learning_coach import data_store
-from personal_learning_coach.level_tester import (
+from personal_learning_coach.infrastructure import data_store
+from personal_learning_coach.application.assessment.level_tester import (
     evaluate_answers,
     generate_assessment_questions,
     run_assessment,
 )
-from personal_learning_coach.models import LearnerLevel
-from personal_learning_coach.plan_generator import enroll_domain, generate_plan
+from personal_learning_coach.domain.models import LearnerLevel
+from personal_learning_coach.application.learning.plan_generator import enroll_domain, generate_plan
 
 
 def _mock_client(response_text: str) -> MagicMock:
@@ -134,7 +134,7 @@ def test_generate_plan_initialises_topic_progress(tmp_data_dir: Path) -> None:
     client = _mock_client(json.dumps(payload))
     plan = generate_plan("u1", "ai_agent", LearnerLevel.BEGINNER, client=client)
 
-    from personal_learning_coach.models import TopicStatus
+    from personal_learning_coach.domain.models import TopicStatus
 
     progress_list = data_store.topic_progress.filter(user_id="u1")
     assert len(progress_list) == 3
@@ -168,7 +168,7 @@ def test_enroll_domain_sets_active_status(tmp_data_dir: Path) -> None:
     client = _mock_client(json.dumps(payload))
     enrollment, plan = enroll_domain("u1", "ai_agent", LearnerLevel.BEGINNER, client=client)
 
-    from personal_learning_coach.models import DomainStatus
+    from personal_learning_coach.domain.models import DomainStatus
 
     assert enrollment.status == DomainStatus.ACTIVE
     saved = data_store.domain_enrollments.filter(user_id="u1", domain="ai_agent")

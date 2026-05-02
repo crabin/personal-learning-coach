@@ -26,7 +26,8 @@ dev = [
 ]
 
 [project.scripts]
-coach = "personal_learning_coach.coach:main"
+coach = "personal_learning_coach.entrypoints.cli:main"
+coach-api = "personal_learning_coach.entrypoints.api.main:serve"
 
 [build-system]
 requires = ["hatchling"]

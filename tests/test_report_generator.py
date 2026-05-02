@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from personal_learning_coach import data_store
-from personal_learning_coach.models import (
+from personal_learning_coach.infrastructure import data_store
+from personal_learning_coach.domain.models import (
     DomainEnrollment,
     DomainStatus,
     EvaluationRecord,
@@ -15,7 +15,7 @@ from personal_learning_coach.models import (
     TopicProgress,
     TopicStatus,
 )
-from personal_learning_coach.report_generator import generate_report, generate_report_payload, render_html, save_report
+from personal_learning_coach.application.learning.report_generator import generate_report, generate_report_payload, render_html, save_report
 
 
 def _setup(user_id: str = "u1", domain: str = "ai_agent") -> None:

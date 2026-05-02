@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from personal_learning_coach.config import load_config
-from personal_learning_coach import llm_client
+from personal_learning_coach.infrastructure.config import load_config
+from personal_learning_coach.infrastructure import llm_client
 
 
 def test_load_config_reads_openai_base_url(monkeypatch) -> None:
