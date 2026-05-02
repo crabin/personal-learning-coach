@@ -15,48 +15,9 @@ from personal_learning_coach.models import (
     PushRecord,
     SubmissionRecord,
 )
+from personal_learning_coach.prompts import EVAL_PROMPT, EVAL_SYSTEM
 
 logger = logging.getLogger(__name__)
-
-EVAL_SYSTEM = """\
-You are an expert learning coach evaluating a student's submission.
-Score the answer on 4 dimensions and provide actionable feedback.
-Respond ONLY with valid JSON matching the specified schema.
-"""
-
-EVAL_PROMPT = """\
-Domain: {domain}
-Topic: {topic_title}
-
-Today's learning content:
-Theory: {theory}
-Practice question: {practice_question}
-
-Student's answer:
-{raw_answer}
-
-Evaluate the answer on these 4 dimensions (score 0-100 each):
-1. concept_coverage (weight 0.30) — Did the student cover the key concepts?
-2. understanding_depth (weight 0.25) — Did they demonstrate genuine understanding?
-3. logic_clarity (weight 0.25) — Is the reasoning clear and well-structured?
-4. practical_application (weight 0.20) — Did they apply concepts practically?
-
-Return JSON with this exact schema:
-{{
-  "dimensions": {{
-    "concept_coverage": {{"score": <0-100>, "feedback": "..."}},
-    "understanding_depth": {{"score": <0-100>, "feedback": "..."}},
-    "logic_clarity": {{"score": <0-100>, "feedback": "..."}},
-    "practical_application": {{"score": <0-100>, "feedback": "..."}}
-  }},
-  "overall_feedback": "2-3 sentence overall assessment",
-  "strengths": ["...", "..."],
-  "weaknesses": ["...", "..."],
-  "missed_concepts": ["..."],
-  "improvement_suggestions": ["..."],
-  "mastery_estimate": <0.0-1.0>
-}}
-"""
 
 DIMENSION_WEIGHTS = {
     "concept_coverage": 0.30,

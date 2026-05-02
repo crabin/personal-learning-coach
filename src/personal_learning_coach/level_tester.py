@@ -9,7 +9,7 @@ from typing import Any, cast
 from personal_learning_coach import data_store
 from personal_learning_coach.llm_client import generate_text
 from personal_learning_coach.models import AssessmentRecord, LearnerLevel
-from personal_learning_coach.prompts.assessment import (
+from personal_learning_coach.prompts import (
     ASSESSMENT_EVALUATE_PROMPT,
     ASSESSMENT_QUESTIONS_PROMPT,
     ASSESSMENT_SYSTEM,

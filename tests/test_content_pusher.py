@@ -290,6 +290,39 @@ def test_push_today_generates_with_learning_history_context(tmp_data_dir: Path) 
     assert push.content_snapshot["learning_context"]["current_topic_progress"]["mastery_score"] == 42.0
 
 
+def test_push_today_includes_playful_learning_intent_context(tmp_data_dir: Path) -> None:
+    _setup_plan()
+    enrollment = DomainEnrollment(
+        user_id="u1",
+        domain="ai_agent",
+        status=DomainStatus.ACTIVE,
+        learning_category="playful",
+        learning_category_confidence=0.88,
+        learning_tone_guidance="用脑洞问题训练真实能力，不能变成纯段子。",
+    )
+    data_store.domain_enrollments.save(enrollment)
+    content = {
+        "theory": "Playful but useful lesson.",
+        "basic_questions": ["Q1?", "Q2?", "Q3?"],
+        "practice_question": "Design a focus protocol as a fake mission briefing.",
+        "reflection_question": "Which part still improves a real skill?",
+    }
+    client = _mock_client(json.dumps(content))
+
+    push = push_today("u1", "ai_agent", client=client, adapter=_CapturingDelivery())
+
+    assert push is not None
+    prompt = client.messages.create.call_args.kwargs["messages"][0]["content"]
+    assert "learning_category=playful" in prompt
+    assert "用脑洞问题训练真实能力" in prompt
+    assert "每题都要训练一个真实能力" in prompt
+    assert "纯搞笑" in prompt
+    assert push.content_snapshot["learning_context"]["enrollment"]["learning_category"] == "playful"
+    assert push.content_snapshot["learning_context"]["enrollment"]["learning_tone_guidance"] == (
+        "用脑洞问题训练真实能力，不能变成纯段子。"
+    )
+
+
 def test_push_today_updates_topic_status(tmp_data_dir: Path) -> None:
     plan = _setup_plan()
     content = {

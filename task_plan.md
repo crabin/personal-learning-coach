@@ -27,6 +27,42 @@
 
 ## 阶段任务
 
+### Phase 14: 前后端代码分层目录整理
+状态：`in_progress`
+
+目标：
+- 后端按领域模型、应用服务、基础设施、入口层重新归类文件
+- 前端按 API、功能模块、共享 UI/特效、样式和测试重新归类文件
+- 保持现有业务行为不变，只调整目录结构和 import 路径
+
+验收标准：
+- Python import、ruff、mypy 和后端测试通过
+- 前端测试与构建通过
+- 新目录结构能清楚区分前端、后端，以及各功能/职责分层
+
+### Phase 13: 隐形学习意图分类与风格化生成
+状态：`complete`
+
+目标：
+- 创建学习目标时隐式判断学习意图是 `serious` 还是 `playful`
+- 让计划生成和每日题目生成根据分类调整风格
+- 前端不展示系统分类，也不新增分类选择控件
+
+验收标准：
+- `DomainEnrollment` 持久化 hidden learning category、confidence 和 tone guidance
+- `plan_generator` 在 enroll 阶段先分类，再把分类上下文传入学习计划 prompt
+- `content_pusher` 把分类上下文写入 learning context 和每日题目 prompt
+- `playful` 风格允许搞怪和脑洞，但明确要求每题训练真实能力，避免纯搞笑、作弊、欺骗或规避责任
+- 后端测试、ruff、mypy 通过
+
+完成情况：
+- 已新增 `learning_intent.py`，支持 LLM 分类、低置信默认 serious、非法 JSON fallback，以及“摸鱼/整活/搞怪/不正经/沙雕”等关键词 fallback 为 playful
+- 已扩展 `DomainEnrollment`：`learning_category`、`learning_category_confidence`、`learning_tone_guidance`
+- 已将分类结果接入 `enroll_domain(...)` 和 `PLAN_GENERATION_PROMPT`
+- 已将分类上下文接入每日推送 `learning_context` 和 `CONTENT_GENERATION_PROMPT`
+- 已补充测试覆盖分类模块、模型默认值、计划 prompt、enrollment 持久化和 playful 题目生成上下文
+- 已完成验证：`uv run pytest -q` 134 passed，`uv run ruff check .` 通过，`uv run mypy src` 通过
+
 ### Phase 11: 学习报告 JSON 导出修复
 状态：`complete`
 

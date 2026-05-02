@@ -3,7 +3,23 @@
 更新日期：2026-04-28
 范围：基于当前仓库实现与项目文档对照所得出的事实性发现。
 
+## 15. 前后端目录分层发现
+
+- 后端 `src/personal_learning_coach` 包根目录包含模型、业务服务、基础设施、CLI、配置、安全等多种职责，核心文件超过 20 个，职责边界主要靠文件名表达。
+- 已有 `api/routes` 与 `delivery` 两个子目录，可作为“入口层”和“投递基础设施”的基础继续扩展。
+- 前端 `src/web` 根目录同时包含 API client、页面功能 helper、测试、样式、入口和构建配置；功能模块数量增加后会继续变平。
+- 测试目前大量直接从旧路径导入模块，因此目录整理需要同步更新测试 import，或提供兼容 re-export。为避免双路径长期存在，本轮采用直接更新 import 的方式。
+- 当前工作区已有未提交变更，目录整理必须只移动现有文件并修正路径，不回滚或改写已有业务逻辑。
+
 ## 8. 历史感知题目生成发现
+
+## 14. 隐形学习意图分类发现
+
+- 学习创建链路的后端入口是 `plan_generator.enroll_domain(...)`，适合在保存 enrollment 和生成 plan 前插入语义分类。
+- 现有前端只传 `learning_style`，并不需要知道系统分类；因此分类结果应保存在 `DomainEnrollment` 里，作为后续生成上下文使用。
+- 每日题目生成已经通过 `content_pusher._build_learning_context(...)` 汇总 enrollment、进度、历史答题和评价，适合把 `learning_category` 和 tone guidance 加入同一上下文。
+- `PLAN_GENERATION_PROMPT` 和 `CONTENT_GENERATION_PROMPT` 是风格影响的最小改动点；不需要改 API 返回结构或前端显示。
+- 现有 SQLite store 以 Pydantic payload JSON 为主，新字段有默认值，旧记录可在读取时自动补默认值，不需要单独迁移。
 
 ## 13. 报告 JSON 导出失效发现
 

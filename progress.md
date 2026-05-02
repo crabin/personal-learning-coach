@@ -268,6 +268,38 @@
 注意：
 - 当前工作区已有与本功能混杂在同一文件里的未提交改动，未自动创建提交，避免把非本轮改动一起提交。
 
+### Session 2026-05-02 hidden learning intent classification
+
+已完成：
+- 新增隐形学习意图分类模块，支持 `serious` / `playful` 两类
+- 分类失败或低置信默认 `serious`，明显搞怪关键词可 fallback 为 `playful`
+- 扩展 `DomainEnrollment`，持久化分类、置信度和 tone guidance
+- 在 `enroll_domain(...)` 中先分类，再把结果写入 enrollment 和学习计划 prompt
+- 在每日题目生成 learning context 中加入分类上下文
+- 在内容生成 prompt 中明确 `playful` 可以搞怪，但每题都要训练真实能力，避免纯搞笑、作弊、欺骗或规避责任
+- 未修改前端显示层，系统分类仍对用户不可见
+
+验证：
+- `uv run pytest tests/test_learning_intent.py tests/test_models.py::test_domain_enrollment_defaults tests/test_plan_generator.py::test_generate_plan_prompt_includes_learning_intent tests/test_plan_generator.py::test_enroll_domain_persists_hidden_learning_intent tests/test_content_pusher.py::test_push_today_includes_playful_learning_intent_context -q`：8 passed
+- `uv run pytest tests/test_plan_generator.py tests/test_content_pusher.py tests/test_api.py::test_enroll_domain tests/test_coach.py::test_plan_command_passes_preferences -q`：32 passed
+- `env SMTP_HOST= SMTP_PORT=465 SMTP_USERNAME= SMTP_PASSWORD= SMTP_FROM_EMAIL= uv run pytest -q`：134 passed
+- `uv run ruff check .`：通过
+- `uv run mypy src`：通过
+
+备注：
+- 直接运行 `uv run pytest -q` 会读取本机 `.env` 的 SMTP 配置，使既有 `test_register_start_requires_smtp_config` 不再处于“未配置 SMTP”场景；最终全量测试通过时显式覆盖 SMTP 变量为空。
+
+### Session 2026-05-02 codebase directory layering
+
+计划：
+- 将后端根目录模块按职责移动到 `domain/`、`application/`、`infrastructure/`、`entrypoints/`
+- 将前端源码移动到 `src/` 下，并按 `api/`、`features/`、`shared/`、`styles/`、`tests/` 组织
+- 修正 import 路径并执行后端、前端验证
+
+初始发现：
+- 后端根目录职责混杂，但已有 API routes 和 delivery 子目录可保留作为分层基础。
+- 前端根目录混有业务 helper、测试、样式和构建配置，适合先做路径分层，不拆分大文件业务逻辑。
+
 ### Session 2026-05-02 empty-domain guard after registration
 
 已完成：

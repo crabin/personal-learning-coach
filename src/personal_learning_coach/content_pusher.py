@@ -25,7 +25,7 @@ from personal_learning_coach.models import (
     TopicStatus,
 )
 from personal_learning_coach.online_resource import OnlineResourceService
-from personal_learning_coach.prompts.generation import CONTENT_GENERATION_PROMPT, CONTENT_SYSTEM
+from personal_learning_coach.prompts import CONTENT_GENERATION_PROMPT, CONTENT_SYSTEM
 from personal_learning_coach.question_history import previous_questions, record_generated_push
 
 logger = logging.getLogger(__name__)
@@ -173,6 +173,9 @@ def _enrollment_context(enrollment: DomainEnrollment | None) -> dict[str, Any]:
         "current_level": _enum_value(enrollment.current_level),
         "daily_minutes": enrollment.daily_minutes,
         "learning_style": enrollment.learning_style,
+        "learning_category": enrollment.learning_category,
+        "learning_category_confidence": enrollment.learning_category_confidence,
+        "learning_tone_guidance": enrollment.learning_tone_guidance,
         "language": enrollment.language,
     }
 
@@ -283,7 +286,10 @@ def _format_enrollment_line(context: dict[str, Any]) -> str:
         f"target_level={enrollment.get('target_level')}, "
         f"current_level={enrollment.get('current_level')}, "
         f"daily_minutes={enrollment.get('daily_minutes')}, "
-        f"learning_style={enrollment.get('learning_style')}"
+        f"learning_style={enrollment.get('learning_style')}, "
+        f"learning_category={enrollment.get('learning_category')}, "
+        f"learning_category_confidence={enrollment.get('learning_category_confidence')}, "
+        f"learning_tone_guidance={enrollment.get('learning_tone_guidance')}"
     )
 
 

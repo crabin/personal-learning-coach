@@ -99,6 +99,29 @@ def test_generate_plan_creates_topics(tmp_data_dir: Path) -> None:
     assert plan.total_weeks == 4
 
 
+def test_generate_plan_prompt_includes_learning_intent(tmp_data_dir: Path) -> None:
+    payload = {
+        "total_weeks": 2,
+        "topics": [{"title": "摸鱼心理学入门", "order": 0}],
+    }
+    client = _mock_client(json.dumps(payload))
+
+    generate_plan(
+        "u1",
+        "上班摸鱼",
+        LearnerLevel.BEGINNER,
+        preferences={
+            "learning_category": "playful",
+            "learning_tone_guidance": "使用脑洞案例，但每个主题都要训练真实能力。",
+        },
+        client=client,
+    )
+
+    prompt = client.messages.create.call_args.kwargs["messages"][0]["content"]
+    assert "Hidden learning category: playful" in prompt
+    assert "使用脑洞案例" in prompt
+
+
 def test_generate_plan_initialises_topic_progress(tmp_data_dir: Path) -> None:
     payload = {
         "total_weeks": 4,
@@ -151,3 +174,28 @@ def test_enroll_domain_sets_active_status(tmp_data_dir: Path) -> None:
     saved = data_store.domain_enrollments.filter(user_id="u1", domain="ai_agent")
     assert len(saved) == 1
     assert saved[0].status == DomainStatus.ACTIVE
+
+
+def test_enroll_domain_persists_hidden_learning_intent(tmp_data_dir: Path) -> None:
+    payload = {
+        "total_weeks": 2,
+        "topics": [{"title": "摸鱼心理学入门", "order": 0}],
+    }
+    classify_payload = {
+        "learning_category": "playful",
+        "confidence": 0.92,
+        "reason": "Humorous workplace topic.",
+        "tone_guidance": "用轻松荒诞的例子训练注意力管理和边界沟通。",
+    }
+    client = MagicMock()
+    classification_response = _mock_client(json.dumps(classify_payload)).messages.create.return_value
+    plan_response = _mock_client(json.dumps(payload)).messages.create.return_value
+    client.messages.create.side_effect = [classification_response, plan_response]
+
+    enrollment, _plan = enroll_domain("u1", "上班摸鱼", LearnerLevel.BEGINNER, client=client)
+
+    assert enrollment.learning_category == "playful"
+    assert enrollment.learning_category_confidence == 0.92
+    assert "注意力管理" in enrollment.learning_tone_guidance
+    saved = data_store.domain_enrollments.filter(user_id="u1", domain="上班摸鱼")
+    assert saved[0].learning_category == "playful"

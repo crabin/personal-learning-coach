@@ -36,6 +36,9 @@ def test_domain_enrollment_defaults() -> None:
     assert enroll.target_level == LearnerLevel.BEGINNER
     assert enroll.daily_minutes == 60
     assert enroll.learning_style == "blended"
+    assert enroll.learning_category == "serious"
+    assert enroll.learning_category_confidence == 0.0
+    assert enroll.learning_tone_guidance == ""
     assert enroll.delivery_time == "09:00"
     assert enroll.language == "zh"
     assert enroll.allow_online_resources is True

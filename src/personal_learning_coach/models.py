@@ -124,6 +124,9 @@ class DomainEnrollment(BaseModel):
     current_level: LearnerLevel | None = None
     daily_minutes: int = 60
     learning_style: str = "blended"
+    learning_category: str = "serious"
+    learning_category_confidence: float = 0.0
+    learning_tone_guidance: str = ""
     delivery_time: str = "09:00"
     language: str = "zh"
     allow_online_resources: bool = True

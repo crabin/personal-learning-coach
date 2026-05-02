@@ -7,6 +7,7 @@ import logging
 from typing import Any, cast
 
 from personal_learning_coach import data_store
+from personal_learning_coach.learning_intent import classify_learning_intent
 from personal_learning_coach.llm_client import generate_text
 from personal_learning_coach.models import (
     DomainEnrollment,
@@ -17,7 +18,7 @@ from personal_learning_coach.models import (
     TopicProgress,
     TopicStatus,
 )
-from personal_learning_coach.prompts.generation import PLAN_GENERATION_PROMPT, PLAN_SYSTEM
+from personal_learning_coach.prompts import PLAN_GENERATION_PROMPT, PLAN_SYSTEM
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,13 @@ def _apply_enrollment_preferences(
     enrollment.target_level = LearnerLevel(prefs.get("target_level", level))
     enrollment.daily_minutes = int(prefs.get("daily_minutes", enrollment.daily_minutes))
     enrollment.learning_style = str(prefs.get("learning_style", enrollment.learning_style))
+    enrollment.learning_category = str(prefs.get("learning_category", enrollment.learning_category))
+    enrollment.learning_category_confidence = float(
+        prefs.get("learning_category_confidence", enrollment.learning_category_confidence)
+    )
+    enrollment.learning_tone_guidance = str(
+        prefs.get("learning_tone_guidance", enrollment.learning_tone_guidance)
+    )
     enrollment.delivery_time = str(prefs.get("delivery_time", enrollment.delivery_time))
     enrollment.language = str(prefs.get("language", enrollment.language))
     enrollment.allow_online_resources = bool(
@@ -92,7 +100,14 @@ def generate_plan(
         Persisted LearningPlan with initialised TopicProgress entries.
     """
     prefs_str = json.dumps(preferences or {})
-    prompt = PLAN_GENERATION_PROMPT.format(domain=domain, level=level.value, preferences=prefs_str)
+    prefs = preferences or {}
+    prompt = PLAN_GENERATION_PROMPT.format(
+        domain=domain,
+        level=level.value,
+        preferences=prefs_str,
+        learning_category=str(prefs.get("learning_category", "serious")),
+        learning_tone_guidance=str(prefs.get("learning_tone_guidance", "")),
+    )
     raw = generate_text(
         system=PLAN_SYSTEM,
         prompt=prompt,
@@ -157,11 +172,28 @@ def enroll_domain(
     else:
         enrollment = DomainEnrollment(user_id=user_id, domain=domain, level=level)
         enrollment.status = DomainStatus.PLANNING
-    enrollment = _apply_enrollment_preferences(enrollment, level, preferences)
+    prefs = dict(preferences or {})
+    language = str(prefs.get("language", enrollment.language))
+    learning_style = str(prefs.get("learning_style", enrollment.learning_style))
+    intent = classify_learning_intent(
+        domain,
+        language=language,
+        learning_style=learning_style,
+        preferences=prefs,
+        client=client,
+    )
+    prefs.update(
+        {
+            "learning_category": intent.learning_category,
+            "learning_category_confidence": intent.confidence,
+            "learning_tone_guidance": intent.tone_guidance,
+        }
+    )
+    enrollment = _apply_enrollment_preferences(enrollment, level, prefs)
 
     data_store.domain_enrollments.save(enrollment)
 
-    plan = generate_plan(user_id, domain, level, preferences, client)
+    plan = generate_plan(user_id, domain, level, prefs, client)
 
     enrollment.status = DomainStatus.ACTIVE
     data_store.domain_enrollments.save(enrollment)
