@@ -1,19 +1,43 @@
 # Personal Learning Coach
 
-一个基于 FastAPI 和 OpenAI 的个人学习教练项目，用来完成学习闭环：
+一个以 **前端 Web 工作台** 为主要入口的个人 AI 学习教练项目。
 
-- 领域报名与初始化
-- 基线测评
-- 学习计划生成
-- 每日学习内容推送
-- 作答提交与评估
-- 复习调度
-- 阶段性报告与结业评估
+它围绕“报名学习领域 → 生成每日问题 → 提交答案 → 自动评估 → 查看学习报告 → 进入复习/结业评估”构建完整学习闭环，并同时提供：
 
-当前项目同时提供：
+- 前端 Web 界面
+- FastAPI HTTP 接口
+- CLI 命令行工具
+- 管理员备份、恢复、用户与领域管理能力
 
-- `CLI` 命令行使用方式
-- `FastAPI` HTTP 接口方式
+## 适合谁
+
+这个项目更适合下面两类使用方式：
+
+1. **普通学习用户**：通过浏览器完成登录、创建学习目标、回答每日问题、查看报告
+2. **管理员/开发者**：通过浏览器管理用户和领域，通过 API / CLI 调试与运维
+
+如果你只是想尽快体验项目，**推荐直接走前端 Web 工作台**，不要先从 CLI 开始。
+
+## 核心能力
+
+### 学习侧
+
+- 用户注册、登录、退出、会话保持
+- 创建学习领域与学习目标
+- 根据当前水平和目标水平生成学习计划
+- 获取当天学习内容：理论、基础题、实践题、复盘题
+- 提交答案并获得自动评估
+- 查看结构化学习报告与近期评估结果
+- 自动识别复习阶段与结业评估阶段
+- 个人设置页查看和删除自己名下的学习领域
+
+### 管理侧
+
+- 管理员查看全部用户
+- 管理员查看指定用户的学习领域
+- 管理员归档 / 重置 / 删除学习领域
+- 系统备份与恢复
+- 运行事件与告警查看
 
 ## 项目结构
 
@@ -26,28 +50,38 @@ src/personal_learning_coach/
   plan_generator.py   学习计划生成
   evaluator.py        作答评估
   report_generator.py 学习报告生成
+src/web/              前端 Web 工作台（Vite + TypeScript）
 data/                 运行期数据目录
-tests/                测试
+tests/                后端测试
 ```
 
-## 运行环境
+## 技术栈
 
-- Python `3.12+`
-- 推荐使用 `uv`
-- 需要可用的 `OPENAI_API_KEY`
+### 后端
 
-本地已经存在 `uv.lock`，因此优先推荐用 `uv` 安装和运行。
+- Python 3.12+
+- FastAPI
+- Pydantic v2
+- SQLite
+- OpenAI SDK
+
+### 前端
+
+- Vite
+- TypeScript
+- 原生单页应用结构
 
 ## 快速开始
 
-### 1. 安装依赖
+### 1. 安装后端依赖
+
+推荐使用 `uv`：
 
 ```bash
-cd /Users/lpb/workspace/myProjects/personal-learning-coach
 uv sync --dev
 ```
 
-如果你不用 `uv`，也可以：
+如果你不用 `uv`：
 
 ```bash
 python -m venv .venv
@@ -57,11 +91,13 @@ pip install -e ".[dev]"
 
 ### 2. 配置环境变量
 
+先复制环境变量模板：
+
 ```bash
 cp .env.example .env
 ```
 
-至少需要在 `.env` 中配置这些字段：
+最小配置如下：
 
 ```env
 OPENAI_API_KEY=sk-...
@@ -72,13 +108,30 @@ DELIVERY_MODE=local
 LOG_LEVEL=INFO
 ```
 
-如果你使用 OpenAI 兼容网关，也可以配置：
+如果你需要前端里登录管理员账号，还需要增加种子管理员配置：
+
+```env
+ADMIN_SEED_EMAIL=admin@example.com
+ADMIN_SEED_PASSWORD=change-this-password
+ADMIN_SEED_NAME=System Admin
+```
+
+可选配置：
+
+```env
+API_AUTH_TOKEN=
+ADMIN_READ_TOKEN=
+ADMIN_WRITE_TOKEN=
+BACKUP_DIR=./data/backups
+```
+
+如果你使用 OpenAI 兼容网关：
 
 ```env
 OPENAI_BASE_URL=https://your-openai-compatible-endpoint/v1
 ```
 
-如需 Telegram 推送，再补充：
+如果你希望把学习内容投递到 Telegram：
 
 ```env
 DELIVERY_MODE=telegram
@@ -86,77 +139,163 @@ TELEGRAM_BOT_TOKEN=...
 TELEGRAM_CHAT_ID=...
 ```
 
-如需接口鉴权和备份能力，可补充：
+## 推荐使用路径：先启动后端，再启动前端
 
-```env
-API_AUTH_TOKEN=your-shared-token
-ADMIN_READ_TOKEN=read-token
-ADMIN_WRITE_TOKEN=write-token
-BACKUP_DIR=./data/backups
-```
-
-## 如何启动项目
-
-### 方式一：启动 API 服务
-
-这是最常用的方式，适合本地调试接口和联调前端。
+### 1. 启动后端 API
 
 ```bash
 uv run uvicorn personal_learning_coach.api.main:app --reload
 ```
 
-启动后访问：
+启动后可访问：
 
-- Swagger 文档: `http://127.0.0.1:8000/docs`
-- 健康检查: `http://127.0.0.1:8000/health`
+- Swagger 文档：`http://127.0.0.1:8000/docs`
+- 健康检查：`http://127.0.0.1:8000/health`
 
-健康检查命令：
+### 2. 启动前端 Web 工作台
+
+```bash
+cd src/web
+npm install
+npm run dev
+```
+
+默认前端地址：
+
+- Web 工作台：`http://127.0.0.1:5173`
+
+前端开发服务器已经内置代理，默认会把这些请求转发到 `http://127.0.0.1:8000`：
+
+- `/health`
+- `/auth`
+- `/domains`
+- `/schedules`
+- `/submissions`
+- `/reports`
+- `/admin`
+- `/data`
+
+如果你的后端不在默认地址，可以在启动前端前设置：
+
+```bash
+VITE_API_PROXY_TARGET=http://127.0.0.1:8000 npm run dev
+```
+
+## 前端使用说明
+
+### 普通用户黄金路径
+
+1. 打开 `http://127.0.0.1:5173`
+2. 注册普通用户，或使用已有账号登录
+3. 在“学习目标”页创建一个学习领域
+4. 切到“每日学习工作台”获取今日问题
+5. 填写基础题、实践题与反思内容并提交
+6. 切到“学习进度报告”查看掌握率、主题明细与近期评估
+7. 在“个人设置”中查看或删除自己名下的学习领域
+
+### 管理员黄金路径
+
+1. 在 `.env` 中设置 `ADMIN_SEED_EMAIL` 和 `ADMIN_SEED_PASSWORD`
+2. 重启后端服务
+3. 用该管理员账号登录前端
+4. 进入“管理与运维”页执行：
+   - 查看用户列表
+   - 查看某个用户的学习领域
+   - 归档 / 重置 / 删除领域
+   - 创建备份 / 恢复备份
+   - 查看运行事件与告警
+
+### 前端页面说明
+
+- **学习目标**：创建领域、设置当前水平 / 目标水平 / 每日学习时间 / 学习风格
+- **每日学习工作台**：获取当天理论、基础题、实践题、复盘题并提交答案
+- **学习进度报告**：查看主题明细、掌握率、近期评估与阶段总结
+- **个人设置**：查看当前账号名下的全部学习领域
+- **管理与运维**：仅管理员可见，用于系统级操作
+
+## API 使用
+
+如果你不走前端，也可以直接调用 API。
+
+### 创建学习领域
+
+```bash
+curl -X POST http://127.0.0.1:8000/domains/ai_agent/enroll \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "u1",
+    "level": "beginner",
+    "target_level": "advanced",
+    "daily_minutes": 45,
+    "learning_style": "practice",
+    "delivery_time": "20:30",
+    "language": "zh",
+    "allow_online_resources": true
+  }'
+```
+
+### 获取学习报告
+
+```bash
+curl "http://127.0.0.1:8000/reports/ai_agent?user_id=u1"
+```
+
+### 健康检查
 
 ```bash
 curl http://127.0.0.1:8000/health
 ```
 
-### 方式二：使用 CLI
+## 认证说明
 
-项目定义了一个命令行入口 `coach`：
+### 用户认证
+
+前端登录与注册使用以下接口：
+
+- `POST /auth/register`
+- `POST /auth/login`
+- `POST /auth/logout`
+- `GET /auth/me`
+
+登录后前端会自动携带 Bearer Token。
+
+### 管理员权限
+
+管理员有两种进入方式：
+
+1. **推荐**：使用管理员账号登录前端
+2. **兼容方式**：通过 `x-api-key` 调用管理接口
+
+管理接口包括：
+
+- `/admin/backup`
+- `/admin/restore`
+- `/admin/runtime-events`
+- `/admin/alerts`
+- `/admin/users`
+- `/admin/users/{user_id}/domains`
+
+## CLI 使用
+
+项目也提供 `coach` 命令，适合脚本化调用和调试。
+
+查看帮助：
 
 ```bash
 uv run coach --help
 ```
 
-常见命令如下。
-
-生成学习计划：
+常用命令：
 
 ```bash
 uv run coach --user-id u1 plan --domain ai_agent --daily-minutes 45 --learning-style practice
-```
-
-推送今天的学习内容：
-
-```bash
 uv run coach --user-id u1 push --domain ai_agent
-```
-
-提交答案：
-
-```bash
 uv run coach --user-id u1 submit --push-id <push_id> --answer "My answer"
-```
-
-生成报告：
-
-```bash
 uv run coach --user-id u1 report --domain ai_agent
-```
-
-提交结业评估：
-
-```bash
 uv run coach --user-id u1 final-assessment --domain ai_agent --passed --score 92 --feedback "Strong finish"
 ```
 
-暂停、恢复、归档、删除领域：
+生命周期命令：
 
 ```bash
 uv run coach --user-id u1 pause --domain ai_agent
@@ -172,111 +311,46 @@ uv run coach backup
 uv run coach restore --backup-path ./data/backups/20260428T120000Z
 ```
 
-### 方式三：启动 Web 控制台
-
-Web 控制台位于 `src/web`，用于在浏览器中操作报名、推送、提交、报告、结业评估、备份和告警等 API 功能。
-
-先启动后端 API：
-
-```bash
-uv run uvicorn personal_learning_coach.api.main:app --reload
-```
-
-再启动前端：
-
-```bash
-cd src/web
-npm install
-npm run dev
-```
-
-默认访问：
-
-- Web 控制台: `http://127.0.0.1:5173`
-- API 代理目标: `http://127.0.0.1:8000`
-
-如果后端不在默认地址，可以在控制台顶部修改 API 地址，或启动前设置：
-
-```bash
-VITE_API_PROXY_TARGET=http://127.0.0.1:8000 npm run dev
-```
-
-## 最小可运行示例
-
-### 1. 启动 API
-
-```bash
-uv run uvicorn personal_learning_coach.api.main:app --reload
-```
-
-### 2. 创建一个学习领域
-
-```bash
-curl -X POST http://127.0.0.1:8000/domains/ai_agent/enroll \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "u1",
-    "daily_minutes": 45,
-    "learning_style": "practice",
-    "delivery_time": "20:30",
-    "language": "zh",
-    "allow_online_resources": true,
-    "target_level": "advanced"
-  }'
-```
-
-### 3. 查看健康状态
-
-```bash
-curl http://127.0.0.1:8000/health
-```
-
-### 4. 查看接口文档
-
-在浏览器打开：
-
-```text
-http://127.0.0.1:8000/docs
-```
-
 ## 数据与输出
 
-- 结构化运行数据默认保存在 `DATA_DIR/personal_learning_coach.sqlite3`
-- 本地推送内容会写入 `DATA_DIR/pushes/`
-- 日志会写入 `DATA_DIR/logs/app.log`
-- SQLite 备份目录默认是 `./data/backups`
+默认情况下：
+
+- 结构化数据保存在 `DATA_DIR/personal_learning_coach.sqlite3`
+- 本地推送内容保存在 `DATA_DIR/pushes/`
+- 日志保存在 `DATA_DIR/logs/app.log`
+- 备份目录默认是 `./data/backups`
 
 ## 开发检查
 
-运行测试：
+### 后端
 
 ```bash
 uv run pytest -q
-```
-
-运行 lint：
-
-```bash
 uv run ruff check .
-```
-
-运行类型检查：
-
-```bash
 uv run mypy src
 ```
 
-运行 Web 控制台检查：
+### 前端
 
 ```bash
 cd src/web
-npm run test
+npm test
 npm run build
 ```
 
-## 当前注意事项
+## 已知注意事项
 
-- 如果没有配置 `OPENAI_API_KEY`，涉及 LLM 生成和评估的功能可能无法正常工作
-- 如果 `DELIVERY_MODE=telegram`，必须同时提供 `TELEGRAM_BOT_TOKEN` 和 `TELEGRAM_CHAT_ID`
-- 管理接口在设置 `API_AUTH_TOKEN`、`ADMIN_READ_TOKEN`、`ADMIN_WRITE_TOKEN` 后需要带鉴权请求头
-- Web 控制台不会保存 Admin API Key；刷新页面后需要重新输入
+- 没有配置 `OPENAI_API_KEY` 时，学习计划生成、题目生成和评估功能无法正常工作
+- `DELIVERY_MODE=telegram` 时必须同时配置 `TELEGRAM_BOT_TOKEN` 和 `TELEGRAM_CHAT_ID`
+- 管理页面只有管理员用户可见
+- 普通用户登录后默认只管理自己名下的数据
+- 前端不会替你创建管理员账号；管理员账号来自后端启动时读取的种子环境变量
+
+## 开发建议
+
+如果你的目标是二次开发，建议按下面顺序理解项目：
+
+1. 先跑通前端登录和学习流程
+2. 再看 `src/personal_learning_coach/api/` 路由层
+3. 然后看 `plan_generator.py`、`content_pusher.py`、`evaluator.py`、`report_generator.py`
+4. 最后再看 CLI 与运维能力
