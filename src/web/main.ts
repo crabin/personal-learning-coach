@@ -17,8 +17,9 @@ import {
 import { emptyReport, renderReport, type ReportPayload, type ReportTopicRow } from "./reportView";
 
 type JsonValue = Record<string, unknown> | unknown[] | string | number | boolean | null;
-type ViewId = "goals" | "questions" | "reports" | "operations";
+type ViewId = "goals" | "questions" | "reports" | "settings" | "operations";
 const DEV_CONSOLE_ENABLED = import.meta.env.DEV;
+const AUTH_TOKEN_STORAGE_KEY = "personal-learning-coach.authToken";
 
 interface ResultState {
   title: string;
@@ -75,9 +76,40 @@ interface DomainOptionResponse {
   label: string;
 }
 
+interface AuthUser {
+  user_id: string;
+  name: string;
+  email: string;
+  role: "learner" | "admin";
+}
+
+interface AuthResponse {
+  token: string;
+  user: AuthUser;
+}
+
+interface AdminUser {
+  user_id: string;
+  name: string;
+  email: string;
+  role: "learner" | "admin";
+  is_active: boolean;
+  domain_count: number;
+}
+
+interface AdminDomain {
+  domain: string;
+  status: string;
+  total_topics: number;
+  mastered_topics: number;
+  review_due_topics: number;
+  avg_score: number;
+}
+
 const DEFAULT_LEARNING_VISUAL = "/data/images/backgroud1.png";
 
 let currentView: ViewId = "goals";
+let currentUser: AuthUser | null = null;
 let loadedQuestionContext = "";
 let pushRequestInFlight = false;
 let consoleVisible = false;
@@ -93,7 +125,48 @@ if (!app) {
 }
 
 app.innerHTML = `
-  <main class="app-shell">
+  <section id="authShell" class="auth-shell" aria-labelledby="authTitle">
+    <div class="auth-card">
+      <div>
+        <span class="auth-kicker">Personal Learning Coach</span>
+        <h1 id="authTitle">登录后进入学习系统</h1>
+        <p>注册会创建普通学习用户；管理员账号由系统环境种子创建。</p>
+      </div>
+      <div class="auth-grid">
+        <section>
+          <h2>登录</h2>
+          <label>
+            邮箱
+            <input id="loginEmail" type="email" autocomplete="email" />
+          </label>
+          <label>
+            密码
+            <input id="loginPassword" type="password" autocomplete="current-password" />
+          </label>
+          <button id="loginButton" class="command primary full" type="button">登录</button>
+        </section>
+        <section>
+          <h2>注册普通用户</h2>
+          <label>
+            姓名
+            <input id="registerName" autocomplete="name" />
+          </label>
+          <label>
+            邮箱
+            <input id="registerEmail" type="email" autocomplete="email" />
+          </label>
+          <label>
+            密码
+            <input id="registerPassword" type="password" autocomplete="new-password" />
+          </label>
+          <button id="registerButton" class="command full" type="button">注册并登录</button>
+        </section>
+      </div>
+      <p id="authMessage" class="auth-message" aria-live="polite"></p>
+    </div>
+  </section>
+
+  <main id="appShell" class="app-shell" hidden>
     <header class="topbar">
       <div class="brand">学习教练</div>
       <nav class="landing-tabs" aria-label="学习流程页面">
@@ -115,46 +188,60 @@ app.innerHTML = `
         </button>
       </nav>
       <section class="config-bar" aria-label="全局配置">
-        <label>
-          API 地址
-          <input id="apiBaseUrl" value="/" placeholder="/" />
-        </label>
-        <label>
-          用户
-          <input id="userId" value="u1" />
-        </label>
-        <label>
-          领域
-          <select id="domain">
-            <option value="ai_agent" selected>AI Agent</option>
-          </select>
-        </label>
-        <label class="admin-key">
-          管理密钥
-          <input id="adminApiKey" type="password" placeholder="可选" />
-        </label>
-        <button id="healthButton" class="icon-button" type="button" aria-label="检查健康状态" title="检查健康状态">
-          <span class="material-symbols-outlined">monitor_heart</span>
-        </button>
-        ${
-          DEV_CONSOLE_ENABLED
-            ? `
-        <button
-          id="consoleToggleButton"
-          class="icon-button"
-          type="button"
-          aria-label="打开开发控制台"
-          title="打开开发控制台"
-          aria-expanded="false"
-        >
-          <span class="material-symbols-outlined">terminal</span>
-        </button>
-        `
-            : ""
-        }
-        <span class="icon-button ghost" aria-hidden="true">
-          <span class="material-symbols-outlined">account_circle</span>
-        </span>
+        <div class="config-cluster">
+          <label class="config-field config-field-api">
+            <span>API 地址</span>
+            <input id="apiBaseUrl" value="/" placeholder="/" />
+          </label>
+          <label class="config-field config-field-user">
+            <span>用户</span>
+            <input id="userId" value="u1" />
+          </label>
+          <label class="config-field config-field-domain">
+            <span>领域</span>
+            <select id="domain">
+              <option value="ai_agent" selected>AI Agent</option>
+            </select>
+          </label>
+          <label class="config-field admin-key">
+            <span>管理密钥</span>
+            <input id="adminApiKey" type="password" placeholder="可选" />
+          </label>
+        </div>
+        <div class="config-actions">
+          <button id="healthButton" class="icon-button" type="button" aria-label="检查健康状态" title="检查健康状态">
+            <span class="material-symbols-outlined">monitor_heart</span>
+          </button>
+          ${
+            DEV_CONSOLE_ENABLED
+              ? `
+          <button
+            id="consoleToggleButton"
+            class="icon-button"
+            type="button"
+            aria-label="打开开发控制台"
+            title="打开开发控制台"
+            aria-expanded="false"
+          >
+            <span class="material-symbols-outlined">terminal</span>
+          </button>
+          `
+              : ""
+          }
+          <button
+            id="settingsButton"
+            class="icon-button"
+            data-view="settings"
+            type="button"
+            aria-label="个人设置"
+            title="个人设置"
+          >
+            <span class="material-symbols-outlined">account_circle</span>
+          </button>
+          <button id="logoutButton" class="icon-button" type="button" aria-label="退出登录" title="退出登录">
+            <span class="material-symbols-outlined">logout</span>
+          </button>
+        </div>
       </section>
     </header>
 
@@ -388,6 +475,39 @@ app.innerHTML = `
       <div id="reportContent" class="report-content">${emptyReport("打开本页后会加载报告。")}</div>
     </section>
 
+    <section id="settingsView" class="landing-page" aria-labelledby="settingsTitle">
+      <div class="page-header">
+        <div>
+          <h1 id="settingsTitle">个人设置</h1>
+          <p>查看你当前名下的全部学习领域，并按需清理不再学习的内容。</p>
+        </div>
+        <button id="refreshSettingsButton" class="command" type="button">
+          <span class="material-symbols-outlined">refresh</span>
+          刷新领域
+        </button>
+      </div>
+      <div class="settings-layout">
+        <section class="work-surface">
+          <div class="surface-heading">
+            <div>
+              <h3><span class="material-symbols-outlined">account_circle</span> 账号信息</h3>
+              <p>当前登录用户与可访问的数据范围。</p>
+            </div>
+          </div>
+          <div id="settingsProfileCard" class="settings-profile-card"></div>
+        </section>
+        <section class="work-surface">
+          <div class="surface-heading">
+            <div>
+              <h3><span class="material-symbols-outlined">inventory_2</span> 我的学习领域</h3>
+              <p>仅展示当前账号可访问的领域。删除后会移除该领域下的学习记录。</p>
+            </div>
+          </div>
+          <div id="settingsDomainList" class="settings-domain-list" aria-live="polite"></div>
+        </section>
+      </div>
+    </section>
+
     <section id="operationsView" class="landing-page" aria-labelledby="operationsTitle">
       <div class="page-header">
         <div>
@@ -400,6 +520,17 @@ app.innerHTML = `
         </button>
       </div>
       <div class="ops-grid">
+        <section class="work-surface wide">
+          <div class="surface-heading">
+            <div>
+              <h3><span class="material-symbols-outlined">admin_panel_settings</span> 用户管理</h3>
+              <p>管理员可查看全部用户与学习领域，并执行角色、启停和进度管理。</p>
+            </div>
+            <button id="loadUsersButton" class="command" type="button">刷新用户</button>
+          </div>
+          <div id="adminUsersList" class="admin-list" aria-live="polite"></div>
+          <div id="adminDomainsList" class="admin-list compact-admin-list" aria-live="polite"></div>
+        </section>
         <section class="work-surface">
           <div class="surface-heading">
             <div>
@@ -492,15 +623,137 @@ app.innerHTML = `
   </main>
 `;
 
-const api = new LearningCoachApi({ baseUrl: getInput("apiBaseUrl").value });
+const api = new LearningCoachApi({
+  baseUrl: getInput("apiBaseUrl").value,
+  authToken: localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) ?? "",
+});
 
+bindAuthActions();
 bindLearningVisualEvents();
 renderBasicQuestionFields([]);
 bindGlobalState();
 bindViews();
 bindActions();
-syncPreview();
-void syncAvailableDomains();
+void bootstrapSession();
+
+function bindAuthActions(): void {
+  onClick("loginButton", login);
+  onClick("registerButton", register);
+  onClick("logoutButton", logout);
+}
+
+async function bootstrapSession(): Promise<void> {
+  const token = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+  if (!token) {
+    showAuthShell("请先登录或注册。");
+    return;
+  }
+  api.setAuthToken(token);
+  try {
+    const response = await api.request<AuthUser>("/auth/me");
+    setAuthenticated(response.data, token);
+  } catch {
+    localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+    api.setAuthToken("");
+    showAuthShell("登录已过期，请重新登录。");
+  }
+}
+
+async function login(): Promise<void> {
+  await authenticate("loginButton", "登录", "登录中...", () =>
+    api.request<AuthResponse>("/auth/login", {
+      method: "POST",
+      body: { email: value("loginEmail"), password: value("loginPassword") },
+    }),
+  );
+}
+
+async function register(): Promise<void> {
+  await authenticate("registerButton", "注册并登录", "注册中...", () =>
+    api.request<AuthResponse>("/auth/register", {
+      method: "POST",
+      body: {
+        name: value("registerName"),
+        email: value("registerEmail"),
+        password: value("registerPassword"),
+      },
+    }),
+  );
+}
+
+async function authenticate(
+  buttonId: string,
+  idleLabel: string,
+  loadingLabel: string,
+  action: () => Promise<ApiResponse<AuthResponse>>,
+): Promise<void> {
+  await withButtonLoading(buttonId, idleLabel, loadingLabel, async () => {
+    try {
+      const response = await action();
+      setAuthenticated(response.data.user, response.data.token);
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : String(error);
+      text("authMessage", message);
+    }
+  });
+}
+
+async function logout(): Promise<void> {
+  try {
+    await api.request<JsonValue>("/auth/logout", { method: "POST" });
+  } finally {
+    currentUser = null;
+    localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+    api.setAuthToken("");
+    showAuthShell("已退出登录。");
+  }
+}
+
+function setAuthenticated(user: AuthUser, token: string): void {
+  currentUser = user;
+  localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+  api.setAuthToken(token);
+  getInput("userId").value = user.user_id;
+  getInput("userId").readOnly = !isCurrentAdmin();
+  document.querySelector<HTMLElement>("#authShell")!.hidden = true;
+  document.querySelector<HTMLElement>("#appShell")!.hidden = false;
+  document.querySelector<HTMLElement>(".config-bar")?.classList.toggle("config-bar-admin", isCurrentAdmin());
+  document.querySelectorAll<HTMLElement>('[data-view="operations"]').forEach((item) => {
+    item.hidden = !isCurrentAdmin();
+  });
+  const adminKey = document.querySelector<HTMLElement>(".admin-key");
+  if (adminKey) {
+    adminKey.hidden = !isCurrentAdmin();
+  }
+  const healthButton = document.querySelector<HTMLElement>("#healthButton");
+  if (healthButton) {
+    healthButton.hidden = !isCurrentAdmin();
+  }
+  const healthPill = document.querySelector<HTMLElement>(".health-pill");
+  if (healthPill) {
+    healthPill.hidden = !isCurrentAdmin();
+  }
+  const consoleButton = document.querySelector<HTMLElement>("#consoleToggleButton");
+  if (consoleButton) {
+    consoleButton.hidden = !isCurrentAdmin();
+  }
+  if (!isCurrentAdmin() && currentView === "operations") {
+    showView("goals");
+  }
+  syncPreview();
+  void syncAvailableDomains();
+}
+
+function showAuthShell(message: string): void {
+  document.querySelector<HTMLElement>("#authShell")!.hidden = false;
+  document.querySelector<HTMLElement>("#appShell")!.hidden = true;
+  document.querySelector<HTMLElement>(".config-bar")?.classList.remove("config-bar-admin");
+  text("authMessage", message);
+}
+
+function isCurrentAdmin(): boolean {
+  return currentUser?.role === "admin";
+}
 
 function bindGlobalState(): void {
   onInput("apiBaseUrl", () => api.setBaseUrl(value("apiBaseUrl")));
@@ -548,6 +801,8 @@ function bindActions(): void {
   onClick("alertsButton", listAlerts);
   onClick("restoreButton", restoreBackup);
   onClick("finalButton", submitFinalAssessment);
+  onClick("loadUsersButton", loadAdminUsers);
+  onClick("refreshSettingsButton", loadSettingsPage);
 }
 
 function showView(view: ViewId): void {
@@ -558,6 +813,9 @@ function showView(view: ViewId): void {
   document.querySelectorAll<HTMLButtonElement>(".tab-button").forEach((button) => {
     button.setAttribute("aria-selected", String(button.dataset.view === view));
   });
+  document.querySelectorAll<HTMLButtonElement>(".icon-button[data-view]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.view === view);
+  });
   if (view === "reports") {
     void refreshReportPage();
   }
@@ -567,6 +825,12 @@ function showView(view: ViewId): void {
   }
   if (view === "goals") {
     void syncGoalSummary();
+  }
+  if (view === "settings") {
+    void loadSettingsPage();
+  }
+  if (view === "operations" && isCurrentAdmin()) {
+    void loadAdminUsers();
   }
 }
 
@@ -823,6 +1087,111 @@ async function restoreBackup(): Promise<void> {
   );
 }
 
+async function loadAdminUsers(): Promise<void> {
+  await withButtonLoading("loadUsersButton", "刷新用户", "同步中...", async () => {
+    await runJson("管理员用户列表", async () => {
+      const response = await api.request<AdminUser[]>("/admin/users", { admin: true });
+      renderAdminUsers(response.data);
+      return response;
+    });
+  });
+}
+
+async function loadSettingsPage(): Promise<void> {
+  if (!currentUser) {
+    return;
+  }
+  const user = currentUser;
+  await withButtonLoading("refreshSettingsButton", "刷新领域", "同步中...", async () => {
+    const response = await api.request<DomainOptionResponse[]>("/domains");
+    const domains = response.data.filter((item) => item.domain.trim().length > 0);
+    const summaries = await Promise.all(
+      domains.map(async (item) => {
+        try {
+          const summary = await api.request<DomainSummaryResponse>(`/domains/${item.domain}/summary`, {
+            query: { user_id: user.user_id },
+          });
+          return { option: item, summary: summary.data };
+        } catch {
+          return { option: item, summary: null };
+        }
+      }),
+    );
+    const realDomains = summaries.filter(
+      ({ summary }) =>
+        summary !== null &&
+        (summary.status !== "not_started" ||
+          summary.active_topic_id.length > 0 ||
+          summary.topic_progress.length > 0 ||
+          summary.mastery_percent > 0),
+    );
+    renderSettingsProfile(realDomains.length);
+    renderSettingsDomains(realDomains);
+  });
+}
+
+async function deleteOwnDomainFromSettings(domainToDelete: string): Promise<void> {
+  if (!currentUser) {
+    return;
+  }
+  const user = currentUser;
+  if (!window.confirm(`确认删除领域 ${domainToDelete}？该领域下的学习记录会一起移除。`)) {
+    return;
+  }
+  await runJson("删除我的领域", () =>
+    api.request<JsonValue>(`/domains/${domainToDelete}`, {
+      method: "DELETE",
+      body: { user_id: user.user_id, confirm: true },
+    }),
+  );
+  await syncAvailableDomains();
+  if (domain() === domainToDelete) {
+    resetQuestionContext();
+    syncPreview();
+  }
+  await loadSettingsPage();
+}
+
+async function loadAdminDomains(userIdToLoad: string): Promise<void> {
+  await runJson("管理员用户领域", async () => {
+    const response = await api.request<AdminDomain[]>(`/admin/users/${userIdToLoad}/domains`, {
+      admin: true,
+    });
+    renderAdminDomains(userIdToLoad, response.data);
+    return response;
+  });
+}
+
+async function updateAdminUser(user: AdminUser, patch: Partial<Pick<AdminUser, "role" | "is_active">>): Promise<void> {
+  await runJson("更新用户", async () => {
+    const response = await api.request<AdminUser>(`/admin/users/${user.user_id}`, {
+      method: "PATCH",
+      admin: true,
+      body: patch,
+    });
+    await loadAdminUsers();
+    return response;
+  });
+}
+
+async function adminDomainAction(userIdToUpdate: string, domainToUpdate: string, action: "archive" | "reset" | "delete"): Promise<void> {
+  const destructive = action === "reset" || action === "delete";
+  if (destructive && !window.confirm(`确认${action === "reset" ? "重置进度" : "删除领域"}：${userIdToUpdate} / ${domainToUpdate}？`)) {
+    return;
+  }
+  await runJson("管理员领域操作", async () => {
+    const response = await api.request<JsonValue>(
+      `/admin/users/${userIdToUpdate}/domains/${domainToUpdate}${action === "delete" ? "" : `/${action}`}`,
+      {
+        method: action === "delete" ? "DELETE" : "POST",
+        admin: true,
+      },
+    );
+    await loadAdminDomains(userIdToUpdate);
+    return response;
+  });
+}
+
 async function runJson<T>(title: string, action: () => Promise<ApiResponse<T>>): Promise<void> {
   await runAction(title, action);
 }
@@ -938,6 +1307,9 @@ function syncPreview(): void {
   void syncQuestionSidebar();
   if (currentView === "reports") {
     void refreshReportPage();
+  }
+  if (currentView === "settings") {
+    void loadSettingsPage();
   }
 }
 
@@ -1181,6 +1553,197 @@ function renderQuestionSidebar(data: ReportPayload): void {
       return row;
     }),
   );
+}
+
+function renderSettingsProfile(domainCount: number): void {
+  const container = document.querySelector<HTMLDivElement>("#settingsProfileCard");
+  if (!container) {
+    throw new Error("Settings profile card not found");
+  }
+  if (!currentUser) {
+    container.textContent = "未登录。";
+    return;
+  }
+
+  const roleLabel = currentUser.role === "admin" ? "管理员" : "普通用户";
+  const profile = document.createElement("article");
+  profile.className = "settings-profile-block";
+  const name = document.createElement("strong");
+  name.textContent = currentUser.name;
+  const email = document.createElement("span");
+  email.textContent = currentUser.email;
+  profile.append(name, email);
+
+  const metrics = document.createElement("article");
+  metrics.className = "settings-profile-metrics";
+  [
+    ["身份", roleLabel],
+    ["用户 ID", currentUser.user_id],
+    ["学习领域", `${domainCount} 个`],
+  ].forEach(([label, metricValue]) => {
+    const item = document.createElement("div");
+    const small = document.createElement("small");
+    small.textContent = label;
+    const strong = document.createElement("b");
+    strong.textContent = metricValue;
+    item.append(small, strong);
+    metrics.append(item);
+  });
+
+  container.replaceChildren(profile, metrics);
+}
+
+function renderSettingsDomains(
+  items: Array<{ option: DomainOptionResponse; summary: DomainSummaryResponse | null }>,
+): void {
+  const container = document.querySelector<HTMLDivElement>("#settingsDomainList");
+  if (!container) {
+    throw new Error("Settings domain list not found");
+  }
+  if (items.length === 0) {
+    const empty = document.createElement("article");
+    empty.className = "settings-empty";
+    empty.textContent = "你还没有创建学习领域。";
+    container.replaceChildren(empty);
+    return;
+  }
+
+  container.replaceChildren(
+    ...items.map(({ option, summary }) => {
+      const row = document.createElement("article");
+      row.className = "settings-domain-row";
+
+      const header = document.createElement("div");
+      header.className = "settings-domain-header";
+
+      const titleGroup = document.createElement("div");
+      const title = document.createElement("strong");
+      title.textContent = option.label;
+      const meta = document.createElement("span");
+      meta.textContent = summary
+        ? `${domainStatusLabel(summary.status)} · 掌握率 ${summary.mastery_percent}% · 当前主题 ${summary.active_topic_title || option.label}`
+        : "领域状态暂时无法加载";
+      titleGroup.append(title, meta);
+
+      const actions = document.createElement("div");
+      actions.className = "settings-domain-actions";
+      actions.append(
+        adminButton("切换到此领域", () => {
+          getInput("domain").value = option.domain;
+          showView("goals");
+          syncPreview();
+          resetQuestionContext();
+        }),
+        adminButton("删除领域", () => void deleteOwnDomainFromSettings(option.domain), true),
+      );
+
+      header.append(titleGroup, actions);
+
+      const progress = document.createElement("div");
+      progress.className = "settings-domain-progress";
+      if (summary && summary.topic_progress.length > 0) {
+        progress.replaceChildren(
+          ...summary.topic_progress.map((topic) => {
+            const rowItem = document.createElement("div");
+            const label = document.createElement("span");
+            label.textContent = topic.title;
+            const value = document.createElement("b");
+            value.textContent = `${topic.mastery_percent}%`;
+            const bar = document.createElement("i");
+            bar.style.setProperty("--value", `${topic.mastery_percent}%`);
+            rowItem.append(label, value, bar);
+            return rowItem;
+          }),
+        );
+      } else {
+        progress.innerHTML = `<div><span>等待学习主题</span><b>0%</b><i style="--value: 0%"></i></div>`;
+      }
+
+      row.append(header, progress);
+      return row;
+    }),
+  );
+}
+
+function renderAdminUsers(users: AdminUser[]): void {
+  const container = document.querySelector<HTMLDivElement>("#adminUsersList");
+  if (!container) {
+    throw new Error("Admin users list not found");
+  }
+  if (users.length === 0) {
+    container.textContent = "暂无用户。";
+    return;
+  }
+  container.replaceChildren(
+    ...users.map((user) => {
+      const row = document.createElement("article");
+      row.className = "admin-row";
+
+      const summary = document.createElement("div");
+      const title = document.createElement("strong");
+      title.textContent = `${user.name} · ${user.email}`;
+      const meta = document.createElement("span");
+      meta.textContent = `${user.role === "admin" ? "管理员" : "普通用户"} · ${user.is_active ? "启用" : "停用"} · ${user.domain_count} 个领域`;
+      summary.append(title, meta);
+
+      const actions = document.createElement("div");
+      actions.className = "admin-actions";
+      actions.append(
+        adminButton("领域", () => void loadAdminDomains(user.user_id)),
+        adminButton(user.role === "admin" ? "设为普通" : "设为管理员", () =>
+          void updateAdminUser(user, { role: user.role === "admin" ? "learner" : "admin" }),
+        ),
+        adminButton(user.is_active ? "停用" : "启用", () =>
+          void updateAdminUser(user, { is_active: !user.is_active }),
+        ),
+      );
+      row.append(summary, actions);
+      return row;
+    }),
+  );
+}
+
+function renderAdminDomains(userIdToRender: string, domains: AdminDomain[]): void {
+  const container = document.querySelector<HTMLDivElement>("#adminDomainsList");
+  if (!container) {
+    throw new Error("Admin domains list not found");
+  }
+  if (domains.length === 0) {
+    container.textContent = `${userIdToRender} 暂无学习领域。`;
+    return;
+  }
+  container.replaceChildren(
+    ...domains.map((item) => {
+      const row = document.createElement("article");
+      row.className = "admin-row";
+
+      const summary = document.createElement("div");
+      const title = document.createElement("strong");
+      title.textContent = item.domain;
+      const meta = document.createElement("span");
+      meta.textContent = `${domainStatusLabel(item.status)} · ${item.mastered_topics}/${item.total_topics} 已掌握 · 均分 ${Math.round(item.avg_score)}`;
+      summary.append(title, meta);
+
+      const actions = document.createElement("div");
+      actions.className = "admin-actions";
+      actions.append(
+        adminButton("归档", () => void adminDomainAction(userIdToRender, item.domain, "archive")),
+        adminButton("重置", () => void adminDomainAction(userIdToRender, item.domain, "reset")),
+        adminButton("删除", () => void adminDomainAction(userIdToRender, item.domain, "delete"), true),
+      );
+      row.append(summary, actions);
+      return row;
+    }),
+  );
+}
+
+function adminButton(label: string, handler: () => void, danger = false): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = danger ? "command danger" : "command";
+  button.textContent = label;
+  button.addEventListener("click", handler);
+  return button;
 }
 
 function setQuestionContentLoading(isLoading: boolean, badgeText = "等待中"): void {

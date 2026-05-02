@@ -1,8 +1,9 @@
-export type HttpMethod = "GET" | "POST" | "DELETE";
+export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
 
 export interface ApiClientOptions {
   baseUrl: string;
   adminApiKey?: string;
+  authToken?: string;
   fetcher?: typeof fetch;
 }
 
@@ -39,11 +40,13 @@ export class LearningCoachApi {
   private baseUrl: string;
   private readonly fetcher: typeof fetch;
   private adminApiKey: string;
+  private authToken: string;
 
   constructor(options: ApiClientOptions) {
     this.baseUrl = normalizeBaseUrl(options.baseUrl);
     this.fetcher = options.fetcher ?? ((input, init) => globalThis.fetch(input, init));
     this.adminApiKey = options.adminApiKey ?? "";
+    this.authToken = options.authToken ?? "";
   }
 
   setBaseUrl(baseUrl: string): void {
@@ -52,6 +55,10 @@ export class LearningCoachApi {
 
   setAdminApiKey(adminApiKey: string): void {
     this.adminApiKey = adminApiKey;
+  }
+
+  setAuthToken(authToken: string): void {
+    this.authToken = authToken;
   }
 
   async request<T>(path: string, options: RequestOptions = {}): Promise<ApiResponse<T>> {
@@ -63,6 +70,9 @@ export class LearningCoachApi {
     }
     if (options.admin && this.adminApiKey.trim()) {
       headers.set("x-api-key", this.adminApiKey.trim());
+    }
+    if (this.authToken.trim()) {
+      headers.set("authorization", `Bearer ${this.authToken.trim()}`);
     }
 
     const response = await this.fetcher(url, {

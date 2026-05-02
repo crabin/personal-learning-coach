@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from personal_learning_coach.models import (
     AssessmentRecord,
+    AuthSession,
     DomainEnrollment,
     EvaluationRecord,
     LearningPlan,
@@ -298,6 +299,7 @@ def _matches(record: BaseModel, criteria: dict[str, Any]) -> bool:
 
 STORE_MODELS: dict[str, type[BaseModel]] = {
     "user_profiles": UserProfile,
+    "auth_sessions": AuthSession,
     "domain_enrollments": DomainEnrollment,
     "learning_plans": LearningPlan,
     "topic_progress": TopicProgress,
@@ -318,6 +320,7 @@ JSON_COLLECTIONS: dict[str, _Store[BaseModel]] = {
 # ---------------------------------------------------------------------------
 
 user_profiles = _Store("user_profiles.json", UserProfile)
+auth_sessions = _Store("auth_sessions.json", AuthSession)
 domain_enrollments = _Store("domain_enrollments.json", DomainEnrollment)
 learning_plans = _Store("learning_plans.json", LearningPlan)
 topic_progress = _Store("topic_progress.json", TopicProgress)

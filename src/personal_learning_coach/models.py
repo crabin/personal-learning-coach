@@ -53,6 +53,11 @@ class LearnerLevel(str, Enum):
     ADVANCED = "advanced"
 
 
+class UserRole(str, Enum):
+    LEARNER = "learner"
+    ADMIN = "admin"
+
+
 # ---------------------------------------------------------------------------
 # Core entity models
 # ---------------------------------------------------------------------------
@@ -64,10 +69,24 @@ class UserProfile(BaseModel):
     user_id: str = Field(default_factory=_uuid)
     name: str
     email: str = ""
+    password_hash: str = ""
+    role: UserRole = UserRole.LEARNER
+    is_active: bool = True
     level_default: LearnerLevel = LearnerLevel.BEGINNER
     preferences: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
+
+
+class AuthSession(BaseModel):
+    """Bearer token session for an authenticated user."""
+
+    session_id: str = Field(default_factory=_uuid)
+    user_id: str
+    token_hash: str
+    expires_at: datetime
+    revoked_at: datetime | None = None
+    created_at: datetime = Field(default_factory=_now)
 
 
 class DomainEnrollment(BaseModel):

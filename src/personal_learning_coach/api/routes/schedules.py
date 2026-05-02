@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import Annotated
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from personal_learning_coach.config import load_config
+from personal_learning_coach.models import PushRecord, UserProfile
+from personal_learning_coach.security import authorize_user_scope, require_current_user
 
 router = APIRouter(prefix="/schedules", tags=["schedules"])
 
@@ -31,9 +33,13 @@ class TriggerResponse(BaseModel):
 
 
 @router.post("/trigger", response_model=TriggerResponse)
-def trigger_push(body: TriggerRequest) -> TriggerResponse:
+def trigger_push(
+    body: TriggerRequest,
+    current_user: Annotated[UserProfile, Depends(require_current_user)],
+) -> TriggerResponse:
     from personal_learning_coach.content_pusher import push_today
 
+    authorize_user_scope(body.user_id, current_user)
     push = push_today(user_id=body.user_id, domain=body.domain)
     if push is None:
         return TriggerResponse(push_id=None, delivered=False, message="No topic ready to push.")
@@ -55,7 +61,7 @@ def trigger_push(body: TriggerRequest) -> TriggerResponse:
     )
 
 
-def _extract_visual_url(push) -> str:
+def _extract_visual_url(push: PushRecord) -> str:
     for snapshot in (push.content_snapshot, push.resource_snapshot):
         if not isinstance(snapshot, dict):
             continue
@@ -88,7 +94,7 @@ def _normalize_visual_url(value: str) -> str:
     return normalized
 
 
-def _fallback_visual_url(push) -> str:
+def _fallback_visual_url(push: PushRecord) -> str:
     images_dir = load_config().data_dir / "images"
     candidates = sorted(
         path

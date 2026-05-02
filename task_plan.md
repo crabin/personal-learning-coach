@@ -27,6 +27,31 @@
 
 ## 阶段任务
 
+### Phase 10: 用户认证、角色权限与管理员系统管理
+状态：`complete`
+
+目标：
+- 补齐注册、登录、退出和 Bearer token 会话
+- 区分普通用户与管理员，普通用户只能访问自己的学习数据
+- 管理员可访问开发控制台、系统管理页和全部用户/领域/进度管理能力
+
+验收标准：
+- `/auth/register`、`/auth/login`、`/auth/logout`、`/auth/me` 可用
+- 学习业务接口必须登录，普通用户跨用户访问返回 403
+- `/admin/*` 支持管理员 Bearer token，并兼容旧 `x-api-key`
+- 前端未登录显示登录/注册页，普通用户隐藏管理页和开发控制台，管理员显示系统管理页
+- 后端测试、ruff、mypy、前端测试与构建通过
+
+完成情况：
+- 已新增 `UserRole`、`AuthSession`、密码哈希、会话签发/撤销、环境变量种子管理员配置
+- 已新增 auth 路由并接入 FastAPI app
+- 已给 domains、reports、schedules、submissions 路由加当前用户鉴权和用户范围校验
+- 已修复提交答案时 `body.user_id` 与 `push.user_id` 不一致的越权风险
+- 已扩展 admin 路由：用户列表、角色/启停更新、用户领域查看、归档、重置进度、删除领域
+- 已扩展前端 ApiClient Bearer token、登录/注册/退出 UI、角色控制导航与系统管理页面
+- 已补充后端 auth/权限/管理员测试和前端 token 注入测试
+- 已完成验证：`uv run pytest -q` 120 passed，`uv run ruff check .` 通过，`uv run mypy src` 通过，`npm test -- --run` 22 passed，`npm run build` 通过
+
 ### Phase 9: 提交评估进度同步标记
 状态：`complete`
 

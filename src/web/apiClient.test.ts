@@ -75,6 +75,16 @@ describe("LearningCoachApi", () => {
     expect(request.headers.get("x-api-key")).toBe("read-token");
   });
 
+  it("adds bearer auth when a session token is configured", async () => {
+    const fetcher = vi.fn().mockResolvedValue(jsonResponse({ status: "ok" }));
+    const api = new LearningCoachApi({ baseUrl: "/", authToken: "session-token", fetcher });
+
+    await api.request("/domains");
+
+    const [, request] = fetcher.mock.calls[0];
+    expect(request.headers.get("authorization")).toBe("Bearer session-token");
+  });
+
   it("formats backend detail errors", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       jsonResponse({ detail: "Domain enrollment not found" }, { status: 404 }),

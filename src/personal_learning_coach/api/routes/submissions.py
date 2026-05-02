@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from personal_learning_coach import data_store
 from personal_learning_coach.evaluator import evaluate_submission
 from personal_learning_coach.mastery_engine import apply_evaluation
-from personal_learning_coach.models import DomainStatus, SubmissionRecord, TopicStatus
+from personal_learning_coach.models import DomainStatus, SubmissionRecord, TopicStatus, UserProfile
 from personal_learning_coach.question_history import record_submission_evaluation
+from personal_learning_coach.security import authorize_user_scope, require_current_user
 
 router = APIRouter(prefix="/submissions", tags=["submissions"])
 
@@ -32,10 +35,16 @@ class SubmitResponse(BaseModel):
 
 
 @router.post("", response_model=SubmitResponse)
-def submit_answer(body: SubmitRequest) -> SubmitResponse:
+def submit_answer(
+    body: SubmitRequest,
+    current_user: Annotated[UserProfile, Depends(require_current_user)],
+) -> SubmitResponse:
+    authorize_user_scope(body.user_id, current_user)
     push = data_store.push_records.get(body.push_id)
     if push is None:
         raise HTTPException(status_code=404, detail="Push not found")
+    if push.user_id != body.user_id:
+        raise HTTPException(status_code=403, detail="Cannot submit another user's push")
 
     submission = SubmissionRecord(
         user_id=body.user_id,

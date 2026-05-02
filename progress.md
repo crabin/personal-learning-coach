@@ -224,3 +224,29 @@
 
 - 本次文档以“当前代码事实”为准，不假设未提交改动已经完成。
 - 后续若代码继续演进，应在每次阶段收口后同步更新这三份文件。
+
+### Session 2026-05-01 auth and admin management
+
+已完成：
+- 新增用户角色、认证会话、PBKDF2 密码哈希、Bearer token 签发与撤销
+- 新增 `/auth/register`、`/auth/login`、`/auth/logout`、`/auth/me`
+- 新增环境变量种子管理员配置：`ADMIN_SEED_EMAIL`、`ADMIN_SEED_PASSWORD`、`ADMIN_SEED_NAME`
+- 学习业务接口已强制登录，并校验普通用户只能访问自己的 `user_id`
+- 修复提交接口中 `body.user_id` 与 `push.user_id` 不一致时可能越权提交的问题
+- 管理接口支持管理员 Bearer token，并保留旧 `x-api-key` 兼容
+- 新增管理员用户/领域/进度管理接口
+- 前端新增登录/注册/退出 shell，ApiClient 自动携带 Bearer token
+- 普通用户隐藏管理页和开发控制台，管理员显示系统管理页
+
+错误记录：
+- 首次运行定向 API 测试时 FastAPI 拒绝 `Annotated[..., Header(default=None)]` 写法；已改为 `Header()` 并用参数默认值表达可选。
+- 加鉴权后旧 API 测试按预期大量返回 401；已升级测试为显式创建普通/管理员会话。
+- `ruff` 发现既有 `topic_titles` 未使用和 `schedules.py` 无用导入；已清理并补齐 `PushRecord` 类型注解。
+
+验证：
+- `uv run pytest tests/test_api.py -q`：34 passed
+- `uv run pytest -q`：120 passed
+- `uv run ruff check .`：通过
+- `uv run mypy src`：通过
+- `npm test -- --run`：22 passed
+- `npm run build`：通过

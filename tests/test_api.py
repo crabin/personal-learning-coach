@@ -22,9 +22,35 @@ from personal_learning_coach.models import (
     TopicNode,
     TopicProgress,
     TopicStatus,
+    UserProfile,
+    UserRole,
 )
+from personal_learning_coach.security import create_session, hash_password
 
 client = TestClient(app)
+
+
+def _auth_headers(user_id: str = "u1", role: UserRole = UserRole.LEARNER) -> dict[str, str]:
+    existing = data_store.user_profiles.get(user_id)
+    if existing is None:
+        data_store.user_profiles.save(
+            UserProfile(
+                user_id=user_id,
+                name=f"User {user_id}",
+                email=f"{user_id}@example.com",
+                password_hash=hash_password("password123"),
+                role=role,
+            )
+        )
+    elif existing.role != role:
+        existing.role = role
+        data_store.user_profiles.save(existing)
+    token, _ = create_session(user_id)
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _admin_headers(user_id: str = "admin") -> dict[str, str]:
+    return _auth_headers(user_id, UserRole.ADMIN)
 
 
 def _mock_enroll(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -65,10 +91,56 @@ def test_health(tmp_data_dir: Path) -> None:
     assert "auth_enabled" in resp.json()
 
 
+def test_register_login_me_and_logout(tmp_data_dir: Path) -> None:
+    registered = client.post(
+        "/auth/register",
+        json={"name": "Learner", "email": "learner@example.com", "password": "password123"},
+    )
+    assert registered.status_code == 200
+    assert registered.json()["user"]["role"] == "learner"
+
+    duplicate = client.post(
+        "/auth/register",
+        json={"name": "Learner", "email": "learner@example.com", "password": "password123"},
+    )
+    assert duplicate.status_code == 409
+
+    login = client.post(
+        "/auth/login",
+        json={"email": "learner@example.com", "password": "password123"},
+    )
+    assert login.status_code == 200
+    token = login.json()["token"]
+
+    me = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me.status_code == 200
+    assert me.json()["email"] == "learner@example.com"
+
+    logout = client.post("/auth/logout", headers={"Authorization": f"Bearer {token}"})
+    assert logout.status_code == 200
+    expired = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert expired.status_code == 401
+
+
+def test_learning_routes_require_login(tmp_data_dir: Path) -> None:
+    resp = client.get("/domains")
+    assert resp.status_code == 401
+
+
+def test_user_cannot_access_another_users_report(tmp_data_dir: Path) -> None:
+    resp = client.get(
+        "/reports/ai_agent",
+        headers=_auth_headers("u1"),
+        params={"user_id": "u2"},
+    )
+    assert resp.status_code == 403
+
+
 def test_enroll_domain(tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _mock_enroll(monkeypatch)
     resp = client.post(
         "/domains/ai_agent/enroll",
+        headers=_auth_headers("u1"),
         json={
             "user_id": "u1",
             "daily_minutes": 45,
@@ -92,8 +164,9 @@ def test_enroll_domain(tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> N
 
 def test_get_domain_status(tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _mock_enroll(monkeypatch)
-    client.post("/domains/ai_agent/enroll", json={"user_id": "u1"})
-    resp = client.get("/domains/ai_agent/status", params={"user_id": "u1"})
+    headers = _auth_headers("u1")
+    client.post("/domains/ai_agent/enroll", headers=headers, json={"user_id": "u1"})
+    resp = client.get("/domains/ai_agent/status", headers=headers, params={"user_id": "u1"})
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "active"
@@ -101,8 +174,12 @@ def test_get_domain_status(tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_get_domain_status_not_found(tmp_data_dir: Path) -> None:
-    resp = client.get("/domains/ai_agent/status", params={"user_id": "nobody"})
-    assert resp.status_code == 404
+    resp = client.get(
+        "/domains/ai_agent/status",
+        headers=_auth_headers("u1"),
+        params={"user_id": "nobody"},
+    )
+    assert resp.status_code == 403
 
 
 def test_list_domains_returns_known_domain_options(tmp_data_dir: Path) -> None:
@@ -111,7 +188,7 @@ def test_list_domains_returns_known_domain_options(tmp_data_dir: Path) -> None:
         LearningPlan(user_id="u1", domain="fullstack_development", level=LearnerLevel.BEGINNER)
     )
 
-    resp = client.get("/domains")
+    resp = client.get("/domains", headers=_auth_headers("u1"))
 
     assert resp.status_code == 200
     data = resp.json()
@@ -158,7 +235,11 @@ def test_get_domain_summary_returns_real_goal_sidebar_data(tmp_data_dir: Path) -
         )
     )
 
-    resp = client.get("/domains/ai_agent/summary", params={"user_id": "u1"})
+    resp = client.get(
+        "/domains/ai_agent/summary",
+        headers=_auth_headers("u1"),
+        params={"user_id": "u1"},
+    )
 
     assert resp.status_code == 200
     data = resp.json()
@@ -176,7 +257,7 @@ def test_pause_domain(tmp_data_dir: Path) -> None:
     enrollment = DomainEnrollment(user_id="u1", domain="ai_agent", status=DomainStatus.ACTIVE)
     data_store.domain_enrollments.save(enrollment)
 
-    resp = client.post("/domains/ai_agent/pause", json={"user_id": "u1"})
+    resp = client.post("/domains/ai_agent/pause", headers=_auth_headers("u1"), json={"user_id": "u1"})
     assert resp.status_code == 200
     assert resp.json()["status"] == "paused"
 
@@ -185,7 +266,7 @@ def test_resume_domain(tmp_data_dir: Path) -> None:
     enrollment = DomainEnrollment(user_id="u1", domain="ai_agent", status=DomainStatus.PAUSED)
     data_store.domain_enrollments.save(enrollment)
 
-    resp = client.post("/domains/ai_agent/resume", json={"user_id": "u1"})
+    resp = client.post("/domains/ai_agent/resume", headers=_auth_headers("u1"), json={"user_id": "u1"})
     assert resp.status_code == 200
     assert resp.json()["status"] == "active"
 
@@ -194,7 +275,7 @@ def test_archive_domain(tmp_data_dir: Path) -> None:
     enrollment = DomainEnrollment(user_id="u1", domain="ai_agent", status=DomainStatus.COMPLETED)
     data_store.domain_enrollments.save(enrollment)
 
-    resp = client.post("/domains/ai_agent/archive", json={"user_id": "u1"})
+    resp = client.post("/domains/ai_agent/archive", headers=_auth_headers("u1"), json={"user_id": "u1"})
     assert resp.status_code == 200
     assert resp.json()["status"] == "archived"
 
@@ -205,6 +286,7 @@ def test_submit_final_assessment_marks_completed(tmp_data_dir: Path) -> None:
 
     resp = client.post(
         "/domains/ai_agent/final-assessment",
+        headers=_auth_headers("u1"),
         json={
             "user_id": "u1",
             "passed": True,
@@ -230,6 +312,7 @@ def test_submit_final_assessment_requires_ready_status(tmp_data_dir: Path) -> No
 
     resp = client.post(
         "/domains/ai_agent/final-assessment",
+        headers=_auth_headers("u1"),
         json={"user_id": "u1", "passed": False, "feedback": "Needs more practice."},
     )
     assert resp.status_code == 409
@@ -239,7 +322,12 @@ def test_delete_domain_requires_confirm(tmp_data_dir: Path) -> None:
     enrollment = DomainEnrollment(user_id="u1", domain="ai_agent", status=DomainStatus.ACTIVE)
     data_store.domain_enrollments.save(enrollment)
 
-    resp = client.request("DELETE", "/domains/ai_agent", json={"user_id": "u1", "confirm": False})
+    resp = client.request(
+        "DELETE",
+        "/domains/ai_agent",
+        headers=_auth_headers("u1"),
+        json={"user_id": "u1", "confirm": False},
+    )
     assert resp.status_code == 400
 
 
@@ -266,7 +354,12 @@ def test_delete_domain_removes_related_records(tmp_data_dir: Path) -> None:
     )
     data_store.question_history.save(history)
 
-    resp = client.request("DELETE", "/domains/ai_agent", json={"user_id": "u1", "confirm": True})
+    resp = client.request(
+        "DELETE",
+        "/domains/ai_agent",
+        headers=_auth_headers("u1"),
+        json={"user_id": "u1", "confirm": True},
+    )
     assert resp.status_code == 200
     assert resp.json()["deleted"] is True
     assert data_store.domain_enrollments.filter(user_id="u1", domain="ai_agent") == []
@@ -278,7 +371,11 @@ def test_delete_domain_removes_related_records(tmp_data_dir: Path) -> None:
 
 
 def test_trigger_push_no_plan(tmp_data_dir: Path) -> None:
-    resp = client.post("/schedules/trigger", json={"user_id": "u1", "domain": "ai_agent"})
+    resp = client.post(
+        "/schedules/trigger",
+        headers=_auth_headers("u1"),
+        json={"user_id": "u1", "domain": "ai_agent"},
+    )
     assert resp.status_code == 200
     assert resp.json()["delivered"] is False
 
@@ -304,7 +401,11 @@ def test_trigger_push_returns_generated_question_content(
     )
     monkeypatch.setattr(content_pusher, "push_today", lambda **_: fake_push)
 
-    resp = client.post("/schedules/trigger", json={"user_id": "u1", "domain": "ai_agent"})
+    resp = client.post(
+        "/schedules/trigger",
+        headers=_auth_headers("u1"),
+        json={"user_id": "u1", "domain": "ai_agent"},
+    )
 
     assert resp.status_code == 200
     data = resp.json()
@@ -338,7 +439,11 @@ def test_trigger_push_falls_back_to_local_learning_visual(
     )
     monkeypatch.setattr(content_pusher, "push_today", lambda **_: fake_push)
 
-    resp = client.post("/schedules/trigger", json={"user_id": "u1", "domain": "ai_agent"})
+    resp = client.post(
+        "/schedules/trigger",
+        headers=_auth_headers("u1"),
+        json={"user_id": "u1", "domain": "ai_agent"},
+    )
 
     assert resp.status_code == 200
     assert resp.json()["visual_url"] == "/data/images/fallback.png"
@@ -397,7 +502,7 @@ def test_get_report(tmp_data_dir: Path) -> None:
         )
     )
 
-    resp = client.get("/reports/ai_agent", params={"user_id": "u1"})
+    resp = client.get("/reports/ai_agent", headers=_auth_headers("u1"), params={"user_id": "u1"})
 
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("application/json")
@@ -433,13 +538,17 @@ def test_submit_answer(tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> N
     from personal_learning_coach.api.routes import submissions as sub_mod
     monkeypatch.setattr(sub_mod, "evaluate_submission", lambda *a, **kw: fake_eval)
 
-    resp = client.post("/submissions", json={
-        "user_id": "u1",
-        "push_id": push.push_id,
-        "raw_answer": "My detailed answer here.",
-        "practice_result": "Built a small prototype.",
-        "parsing_notes": "Captured from a free-form text reply.",
-    })
+    resp = client.post(
+        "/submissions",
+        headers=_auth_headers("u1"),
+        json={
+            "user_id": "u1",
+            "push_id": push.push_id,
+            "raw_answer": "My detailed answer here.",
+            "practice_result": "Built a small prototype.",
+            "parsing_notes": "Captured from a free-form text reply.",
+        },
+    )
     assert resp.status_code == 200
     data = resp.json()
     assert data["overall_score"] == 82.0
@@ -467,11 +576,15 @@ def test_submit_answer(tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_submit_push_not_found(tmp_data_dir: Path) -> None:
-    resp = client.post("/submissions", json={
-        "user_id": "u1",
-        "push_id": "nonexistent-push",
-        "raw_answer": "Answer.",
-    })
+    resp = client.post(
+        "/submissions",
+        headers=_auth_headers("u1"),
+        json={
+            "user_id": "u1",
+            "push_id": "nonexistent-push",
+            "raw_answer": "Answer.",
+        },
+    )
     assert resp.status_code == 404
 
 
@@ -496,7 +609,7 @@ def test_admin_backup_creates_files(tmp_data_dir: Path) -> None:
     history_dir.mkdir(parents=True)
     (history_dir / "history.json").write_text("{}", encoding="utf-8")
 
-    resp = client.post("/admin/backup")
+    resp = client.post("/admin/backup", headers=_admin_headers())
 
     assert resp.status_code == 200
     data = resp.json()
@@ -505,6 +618,50 @@ def test_admin_backup_creates_files(tmp_data_dir: Path) -> None:
     assert backup_path.exists()
     assert (backup_path / "personal_learning_coach.sqlite3").exists()
     assert (backup_path / "question_history" / "u1" / "ai_agent" / "history.json").exists()
+
+
+def test_admin_user_management_lists_and_updates_users(tmp_data_dir: Path) -> None:
+    _auth_headers("u1")
+
+    listed = client.get("/admin/users", headers=_admin_headers())
+    assert listed.status_code == 200
+    users = listed.json()
+    learner = next(item for item in users if item["user_id"] == "u1")
+    assert learner["role"] == "learner"
+
+    updated = client.patch(
+        "/admin/users/u1",
+        headers=_admin_headers(),
+        json={"role": "admin", "is_active": False},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["role"] == "admin"
+    assert updated.json()["is_active"] is False
+
+
+def test_admin_can_manage_user_domain_progress(tmp_data_dir: Path) -> None:
+    _auth_headers("u1")
+    enrollment = DomainEnrollment(user_id="u1", domain="ai_agent", status=DomainStatus.ACTIVE)
+    data_store.domain_enrollments.save(enrollment)
+    progress = TopicProgress(user_id="u1", topic_id="t1", domain="ai_agent", status=TopicStatus.MASTERED)
+    data_store.topic_progress.save(progress)
+
+    domains = client.get("/admin/users/u1/domains", headers=_admin_headers())
+    assert domains.status_code == 200
+    assert domains.json()[0]["domain"] == "ai_agent"
+
+    reset = client.post("/admin/users/u1/domains/ai_agent/reset", headers=_admin_headers())
+    assert reset.status_code == 200
+    assert data_store.topic_progress.filter(user_id="u1", domain="ai_agent") == []
+
+    archive = client.post("/admin/users/u1/domains/ai_agent/archive", headers=_admin_headers())
+    assert archive.status_code == 200
+    assert data_store.domain_enrollments.filter(user_id="u1", domain="ai_agent")[0].status == DomainStatus.ARCHIVED
+
+
+def test_learner_cannot_open_admin_routes(tmp_data_dir: Path) -> None:
+    resp = client.get("/admin/users", headers=_auth_headers("u1"))
+    assert resp.status_code == 403
 
 
 def test_admin_backup_requires_api_key_when_enabled(

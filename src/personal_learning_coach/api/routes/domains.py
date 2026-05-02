@@ -3,14 +3,22 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from personal_learning_coach import data_store
-from personal_learning_coach.models import DomainEnrollment, DomainStatus, LearnerLevel, TopicStatus
+from personal_learning_coach.models import (
+    DomainEnrollment,
+    DomainStatus,
+    LearnerLevel,
+    TopicStatus,
+    UserProfile,
+    UserRole,
+)
 from personal_learning_coach.review_engine import WeeklySummary, generate_weekly_summary, select_active_plan
+from personal_learning_coach.security import authorize_user_scope, require_current_user
 
 router = APIRouter(prefix="/domains", tags=["domains"])
 
@@ -44,9 +52,14 @@ class EnrollResponse(BaseModel):
 
 
 @router.post("/{domain}/enroll", response_model=EnrollResponse)
-def enroll_domain_route(domain: str, body: EnrollRequest) -> EnrollResponse:
+def enroll_domain_route(
+    domain: str,
+    body: EnrollRequest,
+    current_user: Annotated[UserProfile, Depends(require_current_user)],
+) -> EnrollResponse:
     from personal_learning_coach.plan_generator import enroll_domain
 
+    authorize_user_scope(body.user_id, current_user)
     preferences = {
         **body.preferences,
         "target_level": (body.target_level or body.level).value,
@@ -183,19 +196,29 @@ def _delete_records_for_domain(user_id: str, domain: str) -> None:
 
 
 @router.get("", response_model=list[DomainOptionResponse])
-def list_domains() -> list[DomainOptionResponse]:
-    seen_domains = {
-        *(enrollment.domain for enrollment in data_store.domain_enrollments.all()),
-        *(plan.domain for plan in data_store.learning_plans.all()),
-    }
+def list_domains(
+    current_user: Annotated[UserProfile, Depends(require_current_user)],
+) -> list[DomainOptionResponse]:
+    if current_user.role == UserRole.ADMIN:
+        enrollments = data_store.domain_enrollments.all()
+        plans = data_store.learning_plans.all()
+    else:
+        enrollments = data_store.domain_enrollments.filter(user_id=current_user.user_id)
+        plans = data_store.learning_plans.filter(user_id=current_user.user_id)
+    seen_domains = {*(enrollment.domain for enrollment in enrollments), *(plan.domain for plan in plans)}
     domains = sorted({*seen_domains, "ai_agent"})
     return [DomainOptionResponse(domain=domain, label=_domain_label(domain)) for domain in domains]
 
 
 @router.get("/{domain}/status", response_model=DomainStatusResponse)
-def get_domain_status(domain: str, user_id: str) -> DomainStatusResponse:
+def get_domain_status(
+    domain: str,
+    user_id: str,
+    current_user: Annotated[UserProfile, Depends(require_current_user)],
+) -> DomainStatusResponse:
     from personal_learning_coach.review_engine import generate_weekly_summary
 
+    authorize_user_scope(user_id, current_user)
     enrollment = _get_enrollment_or_404(user_id, domain)
     summary: WeeklySummary = generate_weekly_summary(user_id, domain)
 
@@ -212,13 +235,17 @@ def get_domain_status(domain: str, user_id: str) -> DomainStatusResponse:
 
 
 @router.get("/{domain}/summary", response_model=DomainSummaryResponse)
-def get_domain_summary(domain: str, user_id: str) -> DomainSummaryResponse:
+def get_domain_summary(
+    domain: str,
+    user_id: str,
+    current_user: Annotated[UserProfile, Depends(require_current_user)],
+) -> DomainSummaryResponse:
+    authorize_user_scope(user_id, current_user)
     summary: WeeklySummary = generate_weekly_summary(user_id, domain)
     enrollment_list: list[DomainEnrollment] = data_store.domain_enrollments.filter(user_id=user_id, domain=domain)
     enrollment = enrollment_list[0] if enrollment_list else None
     active_plan = select_active_plan(user_id, domain)
     ordered_topics = active_plan.topics if active_plan else []
-    topic_titles = {topic.topic_id: topic.title for topic in ordered_topics}
     progress_by_topic = {
         progress.topic_id: progress
         for progress in data_store.topic_progress.filter(user_id=user_id, domain=domain)
@@ -250,7 +277,12 @@ def get_domain_summary(domain: str, user_id: str) -> DomainSummaryResponse:
 
 
 @router.post("/{domain}/pause", response_model=DomainLifecycleResponse)
-def pause_domain(domain: str, body: DomainLifecycleRequest) -> DomainLifecycleResponse:
+def pause_domain(
+    domain: str,
+    body: DomainLifecycleRequest,
+    current_user: Annotated[UserProfile, Depends(require_current_user)],
+) -> DomainLifecycleResponse:
+    authorize_user_scope(body.user_id, current_user)
     enrollment = _get_enrollment_or_404(body.user_id, domain)
     enrollment.status = DomainStatus.PAUSED
     data_store.domain_enrollments.save(enrollment)
@@ -263,7 +295,12 @@ def pause_domain(domain: str, body: DomainLifecycleRequest) -> DomainLifecycleRe
 
 
 @router.post("/{domain}/resume", response_model=DomainLifecycleResponse)
-def resume_domain(domain: str, body: DomainLifecycleRequest) -> DomainLifecycleResponse:
+def resume_domain(
+    domain: str,
+    body: DomainLifecycleRequest,
+    current_user: Annotated[UserProfile, Depends(require_current_user)],
+) -> DomainLifecycleResponse:
+    authorize_user_scope(body.user_id, current_user)
     enrollment = _get_enrollment_or_404(body.user_id, domain)
     enrollment.status = DomainStatus.ACTIVE
     data_store.domain_enrollments.save(enrollment)
@@ -276,7 +313,12 @@ def resume_domain(domain: str, body: DomainLifecycleRequest) -> DomainLifecycleR
 
 
 @router.post("/{domain}/archive", response_model=DomainLifecycleResponse)
-def archive_domain(domain: str, body: DomainLifecycleRequest) -> DomainLifecycleResponse:
+def archive_domain(
+    domain: str,
+    body: DomainLifecycleRequest,
+    current_user: Annotated[UserProfile, Depends(require_current_user)],
+) -> DomainLifecycleResponse:
+    authorize_user_scope(body.user_id, current_user)
     enrollment = _get_enrollment_or_404(body.user_id, domain)
     enrollment.status = DomainStatus.ARCHIVED
     data_store.domain_enrollments.save(enrollment)
@@ -332,7 +374,12 @@ def _domain_label(domain: str) -> str:
 
 
 @router.delete("/{domain}", response_model=DeleteDomainResponse)
-def delete_domain(domain: str, body: DeleteDomainRequest) -> DeleteDomainResponse:
+def delete_domain(
+    domain: str,
+    body: DeleteDomainRequest,
+    current_user: Annotated[UserProfile, Depends(require_current_user)],
+) -> DeleteDomainResponse:
+    authorize_user_scope(body.user_id, current_user)
     _get_enrollment_or_404(body.user_id, domain)
     if not body.confirm:
         raise HTTPException(status_code=400, detail="Deletion requires confirm=true")
@@ -347,10 +394,13 @@ def delete_domain(domain: str, body: DeleteDomainRequest) -> DeleteDomainRespons
 
 @router.post("/{domain}/final-assessment", response_model=FinalAssessmentResponse)
 def submit_final_assessment_route(
-    domain: str, body: FinalAssessmentRequest
+    domain: str,
+    body: FinalAssessmentRequest,
+    current_user: Annotated[UserProfile, Depends(require_current_user)],
 ) -> FinalAssessmentResponse:
     from personal_learning_coach.mastery_engine import submit_final_assessment
 
+    authorize_user_scope(body.user_id, current_user)
     try:
         record, enrollment = submit_final_assessment(
             user_id=body.user_id,

@@ -205,3 +205,11 @@
 - 当前真实 `data/*.json` collection 包含：domain enrollments、learning plans、topic progress、push records、submission records、evaluation records、runtime events；另有 `data/pushes/` Markdown 和 `data/logs/` 不属于结构化数据迁移范围。
 - 项目当前未依赖 SQLAlchemy，使用标准库 `sqlite3` 能满足需求且改动面最小。
 - 工作区已有与本任务无关的未提交业务/前端修改，本轮应避免回滚或格式化这些文件。
+
+## 8. 用户认证与权限实现发现
+
+- 当前应用原本只有 admin API key，普通学习接口通过请求里的 `user_id` 区分用户，缺少登录态和服务端用户范围校验。
+- SQLite 通用 collection 表可直接承载 `AuthSession`，无需新增专用 SQL schema。
+- `UserProfile` 已存在但只表达学习者资料；扩展 `password_hash`、`role`、`is_active` 可保持旧测试构造兼容。
+- 管理接口需要兼容旧 `x-api-key` 测试和运维用法，同时前端切换到 Bearer token。
+- 前端当前是单文件工作台，最小可行改法是在现有 shell 外增加 auth shell，并通过角色隐藏管理页与开发控制台。

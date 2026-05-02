@@ -1,7 +1,7 @@
 import { defineConfig } from "vite";
 
 const apiTarget = process.env.VITE_API_PROXY_TARGET ?? "http://127.0.0.1:8000";
-const proxiedPaths = ["/health", "/domains", "/schedules", "/submissions", "/reports", "/admin", "/data"];
+const proxiedPaths = ["/health", "/auth", "/domains", "/schedules", "/submissions", "/reports", "/admin", "/data"];
 
 export default defineConfig({
   server: {

@@ -19,6 +19,9 @@ class AppConfig(BaseModel):
     api_auth_token: str = ""
     admin_read_token: str = ""
     admin_write_token: str = ""
+    admin_seed_email: str = ""
+    admin_seed_password: str = ""
+    admin_seed_name: str = "System Admin"
     backup_dir: Path = Path("./data/backups")
 
     @field_validator("delivery_mode")
@@ -52,6 +55,9 @@ def load_config() -> AppConfig:
             api_auth_token=os.environ.get("API_AUTH_TOKEN", ""),
             admin_read_token=os.environ.get("ADMIN_READ_TOKEN", ""),
             admin_write_token=os.environ.get("ADMIN_WRITE_TOKEN", ""),
+            admin_seed_email=os.environ.get("ADMIN_SEED_EMAIL", ""),
+            admin_seed_password=os.environ.get("ADMIN_SEED_PASSWORD", ""),
+            admin_seed_name=os.environ.get("ADMIN_SEED_NAME", "System Admin"),
             backup_dir=Path(os.environ.get("BACKUP_DIR", "./data/backups")),
         )
     except ValidationError as exc:

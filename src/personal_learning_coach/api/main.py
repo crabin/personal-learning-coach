@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from hashlib import sha1
 from pathlib import Path
 from typing import Literal
@@ -12,18 +14,27 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from PIL import Image
 
-from personal_learning_coach.api.routes import admin, domains, reports, schedules, submissions
+from personal_learning_coach.api.routes import admin, auth, domains, reports, schedules, submissions
 from personal_learning_coach.config import load_config
 from personal_learning_coach.monitoring import configure_logging, record_runtime_event
+from personal_learning_coach.security import seed_admin_from_environment
 
 load_dotenv()
 configure_logging()
 logger = logging.getLogger(__name__)
 
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    seed_admin_from_environment()
+    yield
+
+
 app = FastAPI(
     title="Personal Learning Coach",
     description="Closed-loop AI learning coaching API",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.include_router(domains.router)
@@ -31,6 +42,7 @@ app.include_router(submissions.router)
 app.include_router(reports.router)
 app.include_router(schedules.router)
 app.include_router(admin.router)
+app.include_router(auth.router)
 
 
 @app.get("/data/images/{image_path:path}")
